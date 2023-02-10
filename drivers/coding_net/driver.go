@@ -13,30 +13,30 @@ import (
 	"github.com/alist-org/alist/v3/internal/model"
 )
 
-type Cloudreve struct {
+type Coding struct {
 	model.Storage
 	Addition
 	Cookie string
 }
 
-func (d *Cloudreve) Config() driver.Config {
+func (d *Coding) Config() driver.Config {
 	return config
 }
 
-func (d *Cloudreve) GetAddition() driver.Additional {
+func (d *Coding) GetAddition() driver.Additional {
 	return &d.Addition
 }
 
-func (d *Cloudreve) Init(ctx context.Context) error {
+func (d *Coding) Init(ctx context.Context) error {
 	return d.login()
 }
 
-func (d *Cloudreve) Drop(ctx context.Context) error {
+func (d *Coding) Drop(ctx context.Context) error {
 	d.Cookie = ""
 	return nil
 }
 
-func (d *Cloudreve) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
+func (d *Coding) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
 	var r DirectoryResp
 	err := d.request(http.MethodGet, "/directory"+dir.GetPath(), nil, &r)
 	if err != nil {
@@ -48,7 +48,7 @@ func (d *Cloudreve) List(ctx context.Context, dir model.Obj, args model.ListArgs
 	})
 }
 
-func (d *Cloudreve) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error) {
+func (d *Coding) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error) {
 	var dUrl string
 	err := d.request(http.MethodPut, "/file/download/"+file.GetID(), nil, &dUrl)
 	if err != nil {
@@ -59,7 +59,7 @@ func (d *Cloudreve) Link(ctx context.Context, file model.Obj, args model.LinkArg
 	}, nil
 }
 
-func (d *Cloudreve) MakeDir(ctx context.Context, parentDir model.Obj, dirName string) error {
+func (d *Coding) MakeDir(ctx context.Context, parentDir model.Obj, dirName string) error {
 	return d.request(http.MethodPut, "/directory", func(req *resty.Request) {
 		req.SetBody(base.Json{
 			"path": parentDir.GetPath() + "/" + dirName,
@@ -67,7 +67,7 @@ func (d *Cloudreve) MakeDir(ctx context.Context, parentDir model.Obj, dirName st
 	}, nil)
 }
 
-func (d *Cloudreve) Move(ctx context.Context, srcObj, dstDir model.Obj) error {
+func (d *Coding) Move(ctx context.Context, srcObj, dstDir model.Obj) error {
 	body := base.Json{
 		"action":  "move",
 		"src_dir": srcObj.GetPath(),
@@ -79,7 +79,7 @@ func (d *Cloudreve) Move(ctx context.Context, srcObj, dstDir model.Obj) error {
 	}, nil)
 }
 
-func (d *Cloudreve) Rename(ctx context.Context, srcObj model.Obj, newName string) error {
+func (d *Coding) Rename(ctx context.Context, srcObj model.Obj, newName string) error {
 	body := base.Json{
 		"action":   "rename",
 		"new_name": newName,
@@ -90,7 +90,7 @@ func (d *Cloudreve) Rename(ctx context.Context, srcObj model.Obj, newName string
 	}, nil)
 }
 
-func (d *Cloudreve) Copy(ctx context.Context, srcObj, dstDir model.Obj) error {
+func (d *Coding) Copy(ctx context.Context, srcObj, dstDir model.Obj) error {
 	body := base.Json{
 		"src_dir": srcObj.GetPath(),
 		"dst":     dstDir.GetPath(),
@@ -101,7 +101,7 @@ func (d *Cloudreve) Copy(ctx context.Context, srcObj, dstDir model.Obj) error {
 	}, nil)
 }
 
-func (d *Cloudreve) Remove(ctx context.Context, obj model.Obj) error {
+func (d *Coding) Remove(ctx context.Context, obj model.Obj) error {
 	body := convertSrc(obj)
 	err := d.request(http.MethodDelete, "/object", func(req *resty.Request) {
 		req.SetBody(body)
@@ -109,7 +109,7 @@ func (d *Cloudreve) Remove(ctx context.Context, obj model.Obj) error {
 	return err
 }
 
-func (d *Cloudreve) Put(ctx context.Context, dstDir model.Obj, stream model.FileStreamer, up driver.UpdateProgress) error {
+func (d *Coding) Put(ctx context.Context, dstDir model.Obj, stream model.FileStreamer, up driver.UpdateProgress) error {
 	if stream.GetReadCloser() == http.NoBody {
 		return d.create(ctx, dstDir, stream)
 	}
@@ -164,7 +164,7 @@ func (d *Cloudreve) Put(ctx context.Context, dstDir model.Obj, stream model.File
 	return err
 }
 
-func (d *Cloudreve) create(ctx context.Context, dir model.Obj, file model.Obj) error {
+func (d *Coding) create(ctx context.Context, dir model.Obj, file model.Obj) error {
 	body := base.Json{"path": dir.GetPath() + "/" + file.GetName()}
 	if file.IsDir() {
 		err := d.request(http.MethodPut, "directory", func(req *resty.Request) {
@@ -177,8 +177,8 @@ func (d *Cloudreve) create(ctx context.Context, dir model.Obj, file model.Obj) e
 	}, nil)
 }
 
-//func (d *Cloudreve) Other(ctx context.Context, args model.OtherArgs) (interface{}, error) {
+//func (d *Coding) Other(ctx context.Context, args model.OtherArgs) (interface{}, error) {
 //	return nil, errs.NotSupport
 //}
 
-var _ driver.Driver = (*Cloudreve)(nil)
+var _ driver.Driver = (*Coding)(nil)

@@ -14,11 +14,11 @@ import (
 
 const loginPath = "/user/session"
 
-func (d *Cloudreve) request(method string, path string, callback base.ReqCallback, out interface{}) error {
+func (d *Coding) request(method string, path string, callback base.ReqCallback, out interface{}) error {
 	u := d.Address + "/api/v3" + path
 	req := base.RestyClient.R()
 	req.SetHeaders(map[string]string{
-		"Cookie":     "cloudreve-session=" + d.Cookie,
+		"Cookie":     "Coding-session=" + d.Cookie,
 		"Accept":     "application/json, text/plain, */*",
 		"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
 	})
@@ -52,7 +52,7 @@ func (d *Cloudreve) request(method string, path string, callback base.ReqCallbac
 
 		return errors.New(r.Msg)
 	}
-	sess := cookie.GetCookie(resp.Cookies(), "cloudreve-session")
+	sess := cookie.GetCookie(resp.Cookies(), "Coding-session")
 	if sess != nil {
 		d.Cookie = sess.Value
 	}
@@ -71,7 +71,7 @@ func (d *Cloudreve) request(method string, path string, callback base.ReqCallbac
 	return nil
 }
 
-func (d *Cloudreve) login() error {
+func (d *Coding) login() error {
 	return d.request(http.MethodPost, loginPath, func(req *resty.Request) {
 		req.SetBody(base.Json{
 			"username":    d.Addition.Username,

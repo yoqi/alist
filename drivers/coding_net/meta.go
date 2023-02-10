@@ -15,12 +15,12 @@ type Addition struct {
 }
 
 var config = driver.Config{
-	Name:        "Cloudreve",
+	Name:        "Coding",
 	DefaultRoot: "/",
 }
 
 func init() {
 	op.RegisterDriver(func() driver.Driver {
-		return &Cloudreve{}
+		return &Coding{}
 	})
 }
