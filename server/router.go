@@ -4,6 +4,7 @@ import (
 	"github.com/alist-org/alist/v3/cmd/flags"
 	"github.com/alist-org/alist/v3/internal/conf"
 	"github.com/alist-org/alist/v3/internal/message"
+	"github.com/alist-org/alist/v3/pkg/utils"
 	"github.com/alist-org/alist/v3/server/common"
 	"github.com/alist-org/alist/v3/server/handles"
 	"github.com/alist-org/alist/v3/server/middlewares"
@@ -12,21 +13,27 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func Init(r *gin.Engine) {
-	common.SecretKey = []byte(conf.Conf.JwtSecret)
-	Cors(r)
-	r.Use(middlewares.StoragesLoaded)
-	if conf.Conf.MaxConnections > 0 {
-		r.Use(middlewares.MaxAllowed(conf.Conf.MaxConnections))
+func Init(e *gin.Engine) {
+	if !utils.SliceContains([]string{"", "/"}, conf.URL.Path) {
+		e.GET("/", func(c *gin.Context) {
+			c.Redirect(302, conf.URL.Path)
+		})
 	}
-	WebDav(r.Group("/dav"))
+	g := e.Group(conf.URL.Path)
+	common.SecretKey = []byte(conf.Conf.JwtSecret)
+	Cors(g)
+	g.Use(middlewares.StoragesLoaded)
+	if conf.Conf.MaxConnections > 0 {
+		g.Use(middlewares.MaxAllowed(conf.Conf.MaxConnections))
+	}
+	WebDav(g.Group("/dav"))
 
-	r.GET("/favicon.ico", handles.Favicon)
-	r.GET("/i/:link_name", handles.Plist)
-	r.GET("/d/*path", middlewares.Down, handles.Down)
-	r.GET("/p/*path", middlewares.Down, handles.Proxy)
+	g.GET("/favicon.ico", handles.Favicon)
+	g.GET("/i/:link_name", handles.Plist)
+	g.GET("/d/*path", middlewares.Down, handles.Down)
+	g.GET("/p/*path", middlewares.Down, handles.Proxy)
 
-	api := r.Group("/api")
+	api := g.Group("/api")
 	auth := api.Group("", middlewares.Auth)
 
 	api.POST("/auth/login", handles.Login)
@@ -46,9 +53,11 @@ func Init(r *gin.Engine) {
 	_fs(auth.Group("/fs"))
 	admin(auth.Group("/admin", middlewares.AuthAdmin))
 	if flags.Dev {
-		dev(r.Group("/dev"))
+		dev(g.Group("/dev"))
 	}
-	static.Static(r)
+	static.Static(g, func(handlers ...gin.HandlerFunc) {
+		e.NoRoute(handlers...)
+	})
 }
 
 func admin(g *gin.RouterGroup) {
@@ -89,28 +98,10 @@ func admin(g *gin.RouterGroup) {
 	setting.POST("/delete", handles.DeleteSetting)
 	setting.POST("/reset_token", handles.ResetToken)
 	setting.POST("/set_aria2", handles.SetAria2)
+	setting.POST("/set_qbit", handles.SetQbittorrent)
 
 	task := g.Group("/task")
-	task.GET("/down/undone", handles.UndoneDownTask)
-	task.GET("/down/done", handles.DoneDownTask)
-	task.POST("/down/cancel", handles.CancelDownTask)
-	task.POST("/down/delete", handles.DeleteDownTask)
-	task.POST("/down/clear_done", handles.ClearDoneDownTasks)
-	task.GET("/transfer/undone", handles.UndoneTransferTask)
-	task.GET("/transfer/done", handles.DoneTransferTask)
-	task.POST("/transfer/cancel", handles.CancelTransferTask)
-	task.POST("/transfer/delete", handles.DeleteTransferTask)
-	task.POST("/transfer/clear_done", handles.ClearDoneTransferTasks)
-	task.GET("/upload/undone", handles.UndoneUploadTask)
-	task.GET("/upload/done", handles.DoneUploadTask)
-	task.POST("/upload/cancel", handles.CancelUploadTask)
-	task.POST("/upload/delete", handles.DeleteUploadTask)
-	task.POST("/upload/clear_done", handles.ClearDoneUploadTasks)
-	task.GET("/copy/undone", handles.UndoneCopyTask)
-	task.GET("/copy/done", handles.DoneCopyTask)
-	task.POST("/copy/cancel", handles.CancelCopyTask)
-	task.POST("/copy/delete", handles.DeleteCopyTask)
-	task.POST("/copy/clear_done", handles.ClearDoneCopyTasks)
+	handles.SetupTaskRoute(task)
 
 	ms := g.Group("/message")
 	ms.POST("/get", message.HttpInstance.GetHandle)
@@ -139,12 +130,12 @@ func _fs(g *gin.RouterGroup) {
 	g.PUT("/form", middlewares.FsUp, handles.FsForm)
 	g.POST("/link", middlewares.AuthAdmin, handles.Link)
 	g.POST("/add_aria2", handles.AddAria2)
+	g.POST("/add_qbit", handles.AddQbittorrent)
 }
 
-func Cors(r *gin.Engine) {
+func Cors(r *gin.RouterGroup) {
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true
-	//config.AllowHeaders = append(config.AllowHeaders, "Authorization", "range", "File-Path", "As-Task", "Password")
 	config.AllowHeaders = []string{"*"}
 	config.AllowMethods = []string{"*"}
 	r.Use(cors.New(config))
