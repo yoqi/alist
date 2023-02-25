@@ -1,16 +1,11 @@
 appName="alist"
 builtAt="$(date +'%F %T %z')"
 goVersion=$(go version | sed 's/go version //')
-gitAuthor="Xhofe <i@nn.ci>"
+gitAuthor=$(git show -s --format='format:%aN <%ae>' HEAD)
 gitCommit=$(git log --pretty=format:"%h" -1)
 
-if [ "$1" = "dev" ]; then
-  version="dev"
-  webVersion="dev"
-else
-  version=$(git describe --abbrev=0 --tags)
-  webVersion=$(wget -qO- -t1 -T2 "https://api.github.com/repos/alist-org/alist-web/releases/latest" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g')
-fi
+version="dev"
+webVersion="dev"
 
 echo "backend version: $version"
 echo "frontend version: $webVersion"
@@ -26,19 +21,21 @@ ldflags="\
 "
 
 FetchWebDev() {
-  curl -L https://codeload.github.com/alist-org/web-dist/tar.gz/refs/heads/dev -o web-dist-dev.tar.gz
-  tar -zxvf web-dist-dev.tar.gz
-  rm -rf public/dist
-  mv -f web-dist-dev/dist public
-  rm -rf web-dist-dev web-dist-dev.tar.gz
+  # curl -L https://codeload.github.com/alist-org/web-dist/tar.gz/refs/heads/dev -o web-dist-dev.tar.gz
+  # tar -zxvf web-dist-dev.tar.gz
+  # rm -rf public/dist
+  # mv -f web-dist-dev/dist public
+  # rm -rf web-dist-dev web-dist-dev.tar.gz
+  echo "finish"
 }
 
 FetchWebRelease() {
-  curl -L https://github.com/alist-org/alist-web/releases/latest/download/dist.tar.gz -o dist.tar.gz
-  tar -zxvf dist.tar.gz
-  rm -rf public/dist
-  mv -f dist public
-  rm -rf dist.tar.gz
+  # curl -L https://github.com/alist-org/alist-web/releases/latest/download/dist.tar.gz -o dist.tar.gz
+  # tar -zxvf dist.tar.gz
+  # rm -rf public/dist
+  # mv -f dist public
+  # rm -rf dist.tar.gz
+  echo "finish"
 }
 
 BuildWinArm64() {
@@ -52,14 +49,15 @@ BuildWinArm64() {
   go build -o "$1" -ldflags="$ldflags" -tags=jsoniter .
 }
 
+
 BuildDev() {
-  rm -rf .git/
+  # rm -rf .git/
   xgo -targets=linux/amd64,windows/amd64,darwin/amd64 -out "$appName" -ldflags="$ldflags" -tags=jsoniter .
   mkdir -p "dist"
   mv alist-* dist
   cd dist
   upx -9 ./alist-linux*
-  upx -9 ./alist-windows-amd64.exe
+  # upx -9 ./alist-windows-amd64.exe
   find . -type f -print0 | xargs -0 md5sum >md5.txt
   cat md5.txt
 }
@@ -74,11 +72,11 @@ BuildRelease() {
   muslflags="--extldflags '-static -fpic' $ldflags"
   BASE="https://musl.nn.ci/"
   FILES=(x86_64-linux-musl-cross aarch64-linux-musl-cross arm-linux-musleabihf-cross mips-linux-musl-cross mips64-linux-musl-cross mips64el-linux-musl-cross mipsel-linux-musl-cross powerpc64le-linux-musl-cross s390x-linux-musl-cross)
-  for i in "${FILES[@]}"; do
-    url="${BASE}${i}.tgz"
-    curl -L -o "${i}.tgz" "${url}"
-    sudo tar xf "${i}.tgz" --strip-components 1 -C /usr/local
-  done
+  # for i in "${FILES[@]}"; do
+  #   url="${BASE}${i}.tgz"
+  #   curl -L -o "${i}.tgz" "${url}"
+  #   sudo tar xf "${i}.tgz" --strip-components 1 -C /usr/local
+  # done
   OS_ARCHES=(linux-musl-amd64 linux-musl-arm64 linux-musl-arm linux-musl-mips linux-musl-mips64 linux-musl-mips64le linux-musl-mipsle linux-musl-ppc64le linux-musl-s390x)
   CGO_ARGS=(x86_64-linux-musl-gcc aarch64-linux-musl-gcc arm-linux-musleabihf-gcc mips-linux-musl-gcc mips64-linux-musl-gcc mips64el-linux-musl-gcc mipsel-linux-musl-gcc powerpc64le-linux-musl-gcc s390x-linux-musl-gcc)
   for i in "${!OS_ARCHES[@]}"; do
@@ -95,7 +93,7 @@ BuildRelease() {
   xgo -out "$appName" -ldflags="$ldflags" -tags=jsoniter .
   # why? Because some target platforms seem to have issues with upx compression
   upx -9 ./alist-linux-amd64
-  upx -9 ./alist-windows-amd64.exe
+  # upx -9 ./alist-windows-amd64.exe
   mv alist-* build
 }
 
