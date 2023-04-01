@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"time"
 
 	"github.com/alist-org/alist/v3/drivers/base"
 	"github.com/alist-org/alist/v3/internal/driver"
@@ -18,10 +19,8 @@ type AliyundriveOpen struct {
 	model.Storage
 	Addition
 	base string
-	//cron *cron.Cron
 
-	AccessToken string
-	DriveId     string
+	DriveId string
 }
 
 func (d *AliyundriveOpen) Config() driver.Config {
@@ -33,31 +32,15 @@ func (d *AliyundriveOpen) GetAddition() driver.Additional {
 }
 
 func (d *AliyundriveOpen) Init(ctx context.Context) error {
-	err := d.refreshToken()
-	if err != nil {
-		return err
-	}
 	res, err := d.request("/adrive/v1.0/user/getDriveInfo", http.MethodPost, nil)
 	if err != nil {
 		return err
 	}
 	d.DriveId = utils.Json.Get(res, "default_drive_id").ToString()
-	//d.cron = cron.NewCron(time.Hour * 2)
-	//d.cron.Do(func() {
-	//	err := d.refreshToken()
-	//	d.Status = err.Error()
-	//	op.MustSaveDriverStorage(d)
-	//	if err != nil {
-	//		log.Errorf("%+v", err)
-	//	}
-	//})
 	return nil
 }
 
 func (d *AliyundriveOpen) Drop(ctx context.Context) error {
-	//if d.cron != nil {
-	//	d.cron.Stop()
-	//}
 	return nil
 }
 
@@ -74,8 +57,9 @@ func (d *AliyundriveOpen) List(ctx context.Context, dir model.Obj, args model.Li
 func (d *AliyundriveOpen) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error) {
 	res, err := d.request("/adrive/v1.0/openFile/getDownloadUrl", http.MethodPost, func(req *resty.Request) {
 		req.SetBody(base.Json{
-			"drive_id": d.DriveId,
-			"file_id":  file.GetID(),
+			"drive_id":   d.DriveId,
+			"file_id":    file.GetID(),
+			"expire_sec": 14400,
 		})
 	})
 	if err != nil {
@@ -137,7 +121,11 @@ func (d *AliyundriveOpen) Copy(ctx context.Context, srcObj, dstDir model.Obj) er
 }
 
 func (d *AliyundriveOpen) Remove(ctx context.Context, obj model.Obj) error {
-	_, err := d.request("/adrive/v1.0/openFile/recyclebin/trash", http.MethodPost, func(req *resty.Request) {
+	uri := "/adrive/v1.0/openFile/recyclebin/trash"
+	if d.RemoveWay == "delete" {
+		uri = "/adrive/v1.0/openFile/delete"
+	}
+	_, err := d.request(uri, http.MethodPost, func(req *resty.Request) {
 		req.SetBody(base.Json{
 			"drive_id": d.DriveId,
 			"file_id":  obj.GetID(),
@@ -160,11 +148,7 @@ func (d *AliyundriveOpen) Put(ctx context.Context, dstDir model.Obj, stream mode
 	count := 1
 	if stream.GetSize() > DEFAULT {
 		count = int(math.Ceil(float64(stream.GetSize()) / float64(DEFAULT)))
-		partInfoList := make([]base.Json, 0, count)
-		for i := 1; i <= count; i++ {
-			partInfoList = append(partInfoList, base.Json{"part_number": i})
-		}
-		createData["part_info_list"] = partInfoList
+		createData["part_info_list"] = makePartInfos(count)
 	}
 	var createResp CreateResp
 	_, err := d.request("/adrive/v1.0/openFile/create", http.MethodPost, func(req *resty.Request) {
@@ -174,22 +158,25 @@ func (d *AliyundriveOpen) Put(ctx context.Context, dstDir model.Obj, stream mode
 		return err
 	}
 	// 2. upload
-	for i, partInfo := range createResp.PartInfoList {
+	preTime := time.Now()
+	for i := 1; i <= len(createResp.PartInfoList); i++ {
 		if utils.IsCanceled(ctx) {
 			return ctx.Err()
 		}
-		req, err := http.NewRequest("PUT", partInfo.UploadUrl, io.LimitReader(stream, DEFAULT))
+		err = d.uploadPart(ctx, i, count, utils.NewMultiReadable(io.LimitReader(stream, DEFAULT)), &createResp, true)
 		if err != nil {
 			return err
 		}
-		req = req.WithContext(ctx)
-		res, err := base.HttpClient.Do(req)
-		if err != nil {
-			return err
-		}
-		res.Body.Close()
 		if count > 0 {
 			up(i * 100 / count)
+		}
+		// refresh upload url if 50 minutes passed
+		if time.Since(preTime) > 50*time.Minute {
+			createResp.PartInfoList, err = d.getUploadUrl(count, createResp.FileId, createResp.UploadId)
+			if err != nil {
+				return err
+			}
+			preTime = time.Now()
 		}
 	}
 	// 3. complete
