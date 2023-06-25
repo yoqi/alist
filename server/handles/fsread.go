@@ -79,14 +79,14 @@ func FsList(c *gin.Context) {
 		common.ErrorStrResp(c, "Refresh without permission", 403)
 		return
 	}
-	objs, err := fs.List(c, reqPath, req.Refresh)
+	objs, err := fs.List(c, reqPath, &fs.ListArgs{Refresh: req.Refresh})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
 	}
 	total, objs := pagination(objs, &req.PageReq)
 	provider := "unknown"
-	storage, err := fs.GetStorage(reqPath)
+	storage, err := fs.GetStorage(reqPath, &fs.GetStoragesArgs{})
 	if err == nil {
 		provider = storage.GetStorage().Driver
 	}
@@ -132,7 +132,7 @@ func FsDirs(c *gin.Context) {
 		common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
 		return
 	}
-	objs, err := fs.List(c, reqPath)
+	objs, err := fs.List(c, reqPath, &fs.ListArgs{})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
@@ -247,14 +247,14 @@ func FsGet(c *gin.Context) {
 		common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
 		return
 	}
-	obj, err := fs.Get(c, reqPath)
+	obj, err := fs.Get(c, reqPath, &fs.GetArgs{})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
 	}
 	var rawURL string
 
-	storage, err := fs.GetStorage(reqPath)
+	storage, err := fs.GetStorage(reqPath, &fs.GetStoragesArgs{})
 	provider := "unknown"
 	if err == nil {
 		provider = storage.Config().Name
@@ -286,7 +286,11 @@ func FsGet(c *gin.Context) {
 				rawURL = url
 			} else {
 				// if storage is not proxy, use raw url by fs.Link
-				link, _, err := fs.Link(c, reqPath, model.LinkArgs{IP: c.ClientIP(), Header: c.Request.Header})
+				link, _, err := fs.Link(c, reqPath, model.LinkArgs{
+					IP:      c.ClientIP(),
+					Header:  c.Request.Header,
+					HttpReq: c.Request,
+				})
 				if err != nil {
 					common.ErrorResp(c, err, 500)
 					return
@@ -297,7 +301,7 @@ func FsGet(c *gin.Context) {
 	}
 	var related []model.Obj
 	parentPath := stdpath.Dir(reqPath)
-	sameLevelFiles, err := fs.List(c, parentPath)
+	sameLevelFiles, err := fs.List(c, parentPath, &fs.ListArgs{})
 	if err == nil {
 		related = filterRelated(sameLevelFiles, obj)
 	}

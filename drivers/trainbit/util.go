@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alist-org/alist/v3/drivers/base"
 	"github.com/alist-org/alist/v3/internal/model"
 )
 
@@ -38,7 +39,7 @@ func get(url string, apiKey string, AUSHELLPORTAL string) (*http.Response, error
 		Value:  apiKey,
 		MaxAge: 2 * 60,
 	})
-	res, err := http.DefaultClient.Do(req)
+	res, err := base.HttpClient.Do(req)
 	return res, err
 }
 
@@ -65,7 +66,7 @@ func postForm(endpoint string, data url.Values, apiExpiredate string, apiKey str
 		Value:  apiKey,
 		MaxAge: 2 * 60,
 	})
-	res, err := http.DefaultClient.Do(req)
+	res, err := base.HttpClient.Do(req)
 	return res, err
 }
 
@@ -113,10 +114,10 @@ func parseRawFileObject(rawObject []any) ([]model.Obj, error) {
 		}
 		isFolder := int64(object["ty"].(float64)) == 1
 		var name string
-		if isFolder {
-			name = object["name"].(string)
+		if object["ext"].(string) != "" {
+			name = strings.Join([]string{object["name"].(string), object["ext"].(string)}, ".")
 		} else {
-			name = object["name"].(string) + object["ext"].(string)
+			name = object["name"].(string)
 		}
 		modified, err := time.Parse("2006/01/02 15:04:05", object["modified"].(string))
 		if err != nil {

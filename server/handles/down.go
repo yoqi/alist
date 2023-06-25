@@ -21,7 +21,7 @@ import (
 func Down(c *gin.Context) {
 	rawPath := c.MustGet("path").(string)
 	filename := stdpath.Base(rawPath)
-	storage, err := fs.GetStorage(rawPath)
+	storage, err := fs.GetStorage(rawPath, &fs.GetStoragesArgs{})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
@@ -31,9 +31,10 @@ func Down(c *gin.Context) {
 		return
 	} else {
 		link, _, err := fs.Link(c, rawPath, model.LinkArgs{
-			IP:     c.ClientIP(),
-			Header: c.Request.Header,
-			Type:   c.Query("type"),
+			IP:      c.ClientIP(),
+			Header:  c.Request.Header,
+			Type:    c.Query("type"),
+			HttpReq: c.Request,
 		})
 		if err != nil {
 			common.ErrorResp(c, err, 500)
@@ -65,7 +66,7 @@ func Down(c *gin.Context) {
 func Proxy(c *gin.Context) {
 	rawPath := c.MustGet("path").(string)
 	filename := stdpath.Base(rawPath)
-	storage, err := fs.GetStorage(rawPath)
+	storage, err := fs.GetStorage(rawPath, &fs.GetStoragesArgs{})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
@@ -84,8 +85,9 @@ func Proxy(c *gin.Context) {
 			}
 		}
 		link, file, err := fs.Link(c, rawPath, model.LinkArgs{
-			Header: c.Request.Header,
-			Type:   c.Query("type"),
+			Header:  c.Request.Header,
+			Type:    c.Query("type"),
+			HttpReq: c.Request,
 		})
 		if err != nil {
 			common.ErrorResp(c, err, 500)
