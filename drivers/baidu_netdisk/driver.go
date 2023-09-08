@@ -9,7 +9,6 @@ import (
 	"io"
 	"math"
 	"net/url"
-	"os"
 	stdpath "path"
 	"strconv"
 	"time"
@@ -31,7 +30,7 @@ type BaiduNetdisk struct {
 	uploadThread int
 }
 
-const DefaultSliceSize int64 = 4 * 1024 * 1024
+const DefaultSliceSize int64 = 4 * utils.MB
 
 func (d *BaiduNetdisk) Config() driver.Config {
 	return config
@@ -81,7 +80,7 @@ func (d *BaiduNetdisk) Link(ctx context.Context, file model.Obj, args model.Link
 
 func (d *BaiduNetdisk) MakeDir(ctx context.Context, parentDir model.Obj, dirName string) (model.Obj, error) {
 	var newDir File
-	_, err := d.create(stdpath.Join(parentDir.GetPath(), dirName), 0, 1, "", "", &newDir)
+	_, err := d.create(stdpath.Join(parentDir.GetPath(), dirName), 0, 1, "", "", &newDir, 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -147,15 +146,43 @@ func (d *BaiduNetdisk) Remove(ctx context.Context, obj model.Obj) error {
 	return err
 }
 
-func (d *BaiduNetdisk) Put(ctx context.Context, dstDir model.Obj, stream model.FileStreamer, up driver.UpdateProgress) (model.Obj, error) {
-	tempFile, err := utils.CreateTempFile(stream.GetReadCloser(), stream.GetSize())
+func (d *BaiduNetdisk) PutRapid(ctx context.Context, dstDir model.Obj, stream model.FileStreamer) (model.Obj, error) {
+	contentMd5 := stream.GetHash().GetHash(utils.MD5)
+	if len(contentMd5) < utils.MD5.Width {
+		return nil, errors.New("invalid hash")
+	}
+
+	streamSize := stream.GetSize()
+	rawPath := stdpath.Join(dstDir.GetPath(), stream.GetName())
+	path := encodeURIComponent(rawPath)
+	mtime := stream.ModTime().Unix()
+	ctime := stream.CreateTime().Unix()
+	blockList, _ := utils.Json.MarshalToString([]string{contentMd5})
+
+	data := fmt.Sprintf("path=%s&size=%d&isdir=0&rtype=3&block_list=%s&local_mtime=%d&local_ctime=%d",
+		path, streamSize, blockList, mtime, ctime)
+	params := map[string]string{
+		"method": "create",
+	}
+	log.Debugf("[baidu_netdisk] precreate data: %s", data)
+	var newFile File
+	_, err := d.post("/xpan/file", params, data, &newFile)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		_ = tempFile.Close()
-		_ = os.Remove(tempFile.Name())
-	}()
+	return fileToObj(newFile), nil
+}
+
+func (d *BaiduNetdisk) Put(ctx context.Context, dstDir model.Obj, stream model.FileStreamer, up driver.UpdateProgress) (model.Obj, error) {
+	// rapid upload
+	if newObj, err := d.PutRapid(ctx, dstDir, stream); err == nil {
+		return newObj, nil
+	}
+
+	tempFile, err := stream.CacheFullInTempFile()
+	if err != nil {
+		return nil, err
+	}
 
 	streamSize := stream.GetSize()
 	count := int(math.Max(math.Ceil(float64(streamSize)/float64(DefaultSliceSize)), 1))
@@ -194,15 +221,15 @@ func (d *BaiduNetdisk) Put(ctx context.Context, dstDir model.Obj, stream model.F
 
 	rawPath := stdpath.Join(dstDir.GetPath(), stream.GetName())
 	path := encodeURIComponent(rawPath)
+	mtime := stream.ModTime().Unix()
+	ctime := stream.CreateTime().Unix()
 
 	// step.1 预上传
 	// 尝试获取之前的进度
 	precreateResp, ok := base.GetUploadProgress[*PrecreateResp](d, d.AccessToken, contentMd5)
 	if !ok {
-		data := fmt.Sprintf("path=%s&size=%d&isdir=0&autoinit=1&rtype=3&block_list=%s&content-md5=%s&slice-md5=%s",
-			path, streamSize,
-			blockListStr,
-			contentMd5, sliceMd5)
+		data := fmt.Sprintf("path=%s&size=%d&isdir=0&autoinit=1&rtype=3&block_list=%s&content-md5=%s&slice-md5=%s&local_mtime=%d&local_ctime=%d",
+			path, streamSize, blockListStr, contentMd5, sliceMd5, mtime, ctime)
 		params := map[string]string{
 			"method": "precreate",
 		}
@@ -263,12 +290,13 @@ func (d *BaiduNetdisk) Put(ctx context.Context, dstDir model.Obj, stream model.F
 
 	// step.3 创建文件
 	var newFile File
-	_, err = d.create(rawPath, streamSize, 0, precreateResp.Uploadid, blockListStr, &newFile)
+	_, err = d.create(rawPath, streamSize, 0, precreateResp.Uploadid, blockListStr, &newFile, mtime, ctime)
 	if err != nil {
 		return nil, err
 	}
 	return fileToObj(newFile), nil
 }
+
 func (d *BaiduNetdisk) uploadSlice(ctx context.Context, params map[string]string, fileName string, file io.Reader) error {
 	res, err := base.RestyClient.R().
 		SetContext(ctx).
