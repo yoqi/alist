@@ -16,7 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var CopyTaskManager = task.NewTaskManager(3, func(tid *uint64) {
+var CopyTaskManager = task.NewTaskManager(1, func(tid *uint64) {
 	atomic.AddUint64(tid, 1)
 })
 
