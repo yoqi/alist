@@ -6,9 +6,10 @@ const (
 	STYLE
 	PREVIEW
 	GLOBAL
-	ARIA2
+	OFFLINE_DOWNLOAD
 	INDEX
 	SSO
+	LDAP
 )
 
 const (
