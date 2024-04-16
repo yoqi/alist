@@ -4,13 +4,9 @@ goVersion=$(go version | sed 's/go version //')
 gitAuthor="Xhofe <i@nn.ci>"
 gitCommit=$(git log --pretty=format:"%h" -1)
 
-if [ "$1" = "dev" ]; then
-  version="dev"
-  webVersion="dev"
-else
-  version=$(git describe --abbrev=0 --tags)
-  webVersion=$(wget -qO- -t1 -T2 "https://api.github.com/repos/alist-org/alist-web/releases/latest" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g')
-fi
+version="dev"
+webVersion="dev"
+
 
 echo "backend version: $version"
 echo "frontend version: $webVersion"
@@ -34,10 +30,10 @@ FetchWebDev() {
 }
 
 FetchWebRelease() {
-  curl -L https://github.com/alist-org/alist-web/releases/latest/download/dist.tar.gz -o dist.tar.gz
-  tar -zxvf dist.tar.gz
-  rm -rf public/dist
-  mv -f dist public
+  # curl -L https://github.com/alist-org/alist-web/releases/latest/download/dist.tar.gz -o dist.tar.gz
+  # tar -zxvf dist.tar.gz
+  # rm -rf public/dist
+  # mv -f dist public
   rm -rf dist.tar.gz
 }
 
@@ -54,7 +50,7 @@ BuildWinArm64() {
 }
 
 BuildDev() {
-  rm -rf .git/
+  # rm -rf .git/
   mkdir -p "dist"
   muslflags="--extldflags '-static -fpic' $ldflags"
   BASE="https://musl.nn.ci/"
@@ -141,7 +137,7 @@ BuildDockerMultiplatform() {
 }
 
 BuildRelease() {
-  rm -rf .git/
+  # rm -rf .git/
   mkdir -p "build"
   BuildWinArm64 ./build/alist-windows-arm64.exe
   xgo -out "$appName" -ldflags="$ldflags" -tags=jsoniter .
@@ -153,7 +149,7 @@ BuildRelease() {
 }
 
 BuildReleaseLinuxMusl() {
-  rm -rf .git/
+  # rm -rf .git/
   mkdir -p "build"
   muslflags="--extldflags '-static -fpic' $ldflags"
   BASE="https://musl.nn.ci/"
@@ -179,7 +175,7 @@ BuildReleaseLinuxMusl() {
 }
 
 BuildReleaseLinuxMuslArm() {
-  rm -rf .git/
+  # rm -rf .git/
   mkdir -p "build"
   muslflags="--extldflags '-static -fpic' $ldflags"
   BASE="https://musl.nn.ci/"
@@ -212,7 +208,7 @@ BuildReleaseLinuxMuslArm() {
 }
 
 BuildReleaseAndroid() {
-  rm -rf .git/
+  # rm -rf .git/
   mkdir -p "build"
   wget https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
   unzip android-ndk-r26b-linux.zip
