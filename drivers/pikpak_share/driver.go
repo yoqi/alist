@@ -2,7 +2,10 @@ package pikpak_share
 
 import (
 	"context"
+	"github.com/alist-org/alist/v3/internal/op"
 	"net/http"
+	"regexp"
+	"time"
 
 	"github.com/alist-org/alist/v3/internal/driver"
 	"github.com/alist-org/alist/v3/internal/model"
@@ -13,8 +16,7 @@ import (
 type PikPakShare struct {
 	model.Storage
 	Addition
-	RefreshToken  string
-	AccessToken   string
+	*Common
 	PassCodeToken string
 }
 
@@ -27,16 +29,66 @@ func (d *PikPakShare) GetAddition() driver.Additional {
 }
 
 func (d *PikPakShare) Init(ctx context.Context) error {
-	err := d.login()
+	if d.Common == nil {
+		d.Common = &Common{
+			DeviceID:  utils.GetMD5EncodeStr(d.Addition.ShareId + d.Addition.SharePwd + time.Now().String()),
+			UserAgent: "",
+			RefreshCTokenCk: func(token string) {
+				d.Common.CaptchaToken = token
+				op.MustSaveDriverStorage(d)
+			},
+			LowLatencyAddr: "",
+		}
+	}
+
+	if d.Addition.DeviceID != "" {
+		d.SetDeviceID(d.Addition.DeviceID)
+	} else {
+		d.Addition.DeviceID = d.Common.DeviceID
+		op.MustSaveDriverStorage(d)
+	}
+
+	if d.Platform == "android" {
+		d.ClientID = AndroidClientID
+		d.ClientSecret = AndroidClientSecret
+		d.ClientVersion = AndroidClientVersion
+		d.PackageName = AndroidPackageName
+		d.Algorithms = AndroidAlgorithms
+		d.UserAgent = BuildCustomUserAgent(d.GetDeviceID(), AndroidClientID, AndroidPackageName, AndroidSdkVersion, AndroidClientVersion, AndroidPackageName, "")
+	} else if d.Platform == "web" {
+		d.ClientID = WebClientID
+		d.ClientSecret = WebClientSecret
+		d.ClientVersion = WebClientVersion
+		d.PackageName = WebPackageName
+		d.Algorithms = WebAlgorithms
+		d.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
+	} else if d.Platform == "pc" {
+		d.ClientID = PCClientID
+		d.ClientSecret = PCClientSecret
+		d.ClientVersion = PCClientVersion
+		d.PackageName = PCPackageName
+		d.Algorithms = PCAlgorithms
+		d.UserAgent = "MainWindow Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) PikPak/2.5.6.4831 Chrome/100.0.4896.160 Electron/18.3.15 Safari/537.36"
+	}
+
+	if d.UseLowLatencyAddress && d.Addition.CustomLowLatencyAddress != "" {
+		d.Common.LowLatencyAddr = d.Addition.CustomLowLatencyAddress
+	} else if d.UseLowLatencyAddress {
+		d.Common.LowLatencyAddr = findLowestLatencyAddress(DlAddr)
+		d.Addition.CustomLowLatencyAddress = d.Common.LowLatencyAddr
+		op.MustSaveDriverStorage(d)
+	}
+
+	// 获取CaptchaToken
+	err := d.RefreshCaptchaToken(GetAction(http.MethodGet, "https://api-drive.mypikpak.com/drive/v1/share:batch_file_info"), "")
 	if err != nil {
 		return err
 	}
+
 	if d.SharePwd != "" {
-		err = d.getSharePassToken()
-		if err != nil {
-			return err
-		}
+		return d.getSharePassToken()
 	}
+
 	return nil
 }
 
@@ -67,10 +119,27 @@ func (d *PikPakShare) Link(ctx context.Context, file model.Obj, args model.LinkA
 	if err != nil {
 		return nil, err
 	}
-	link := model.Link{
-		URL: resp.FileInfo.WebContentLink,
+
+	downloadUrl := resp.FileInfo.WebContentLink
+	if downloadUrl == "" && len(resp.FileInfo.Medias) > 0 {
+		// 使用转码后的链接
+		if d.Addition.UseTransCodingAddress && len(resp.FileInfo.Medias) > 1 {
+			downloadUrl = resp.FileInfo.Medias[1].Link.Url
+		} else {
+			downloadUrl = resp.FileInfo.Medias[0].Link.Url
+		}
+
 	}
-	return &link, nil
+
+	if d.UseLowLatencyAddress && d.Common.LowLatencyAddr != "" {
+		// 替换为加速链接
+		re := regexp.MustCompile(`https://[^/]+/download/`)
+		downloadUrl = re.ReplaceAllString(downloadUrl, "https://"+d.Common.LowLatencyAddr+"/download/")
+	}
+
+	return &model.Link{
+		URL: downloadUrl,
+	}, nil
 }
 
 var _ driver.Driver = (*PikPakShare)(nil)

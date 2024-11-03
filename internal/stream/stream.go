@@ -51,7 +51,11 @@ func (f *FileStream) IsForceStreamUpload() bool {
 
 func (f *FileStream) Close() error {
 	var err1, err2 error
+
 	err1 = f.Closers.Close()
+	if errors.Is(err1, os.ErrClosed) {
+		err1 = nil
+	}
 	if f.tmpFile != nil {
 		err2 = os.RemoveAll(f.tmpFile.Name())
 		if err2 != nil {
@@ -104,7 +108,7 @@ func (f *FileStream) RangeRead(httpRange http_range.Range) (io.Reader, error) {
 		if httpRange.Start == 0 && httpRange.Length <= InMemoryBufMaxSizeBytes && f.peekBuff == nil {
 			bufSize := utils.Min(httpRange.Length, f.GetSize())
 			newBuf := bytes.NewBuffer(make([]byte, 0, bufSize))
-			n, err := io.CopyN(newBuf, f.Reader, bufSize)
+			n, err := utils.CopyWithBufferN(newBuf, f.Reader, bufSize)
 			if err != nil {
 				return nil, err
 			}

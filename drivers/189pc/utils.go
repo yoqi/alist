@@ -114,17 +114,19 @@ func (y *Cloud189PC) request(url, method string, callback base.ReqCallback, para
 		if err = y.refreshSession(); err != nil {
 			return nil, err
 		}
-		return y.request(url, method, callback, params, resp)
+		return y.request(url, method, callback, params, resp, isFamily...)
+	}
+
+	// if erron.ErrorCode == "InvalidSessionKey" || erron.Code == "InvalidSessionKey" {
+	if strings.Contains(res.String(), "InvalidSessionKey") {
+		if err = y.refreshSession(); err != nil {
+			return nil, err
+		}
+		return y.request(url, method, callback, params, resp, isFamily...)
 	}
 
 	// 处理错误
 	if erron.HasError() {
-		if erron.ErrorCode == "InvalidSessionKey" {
-			if err = y.refreshSession(); err != nil {
-				return nil, err
-			}
-			return y.request(url, method, callback, params, resp)
-		}
 		return nil, &erron
 	}
 	return res.Body(), nil
@@ -595,7 +597,7 @@ func (y *Cloud189PC) FastUpload(ctx context.Context, dstDir model.Obj, file mode
 		}
 
 		silceMd5.Reset()
-		if _, err := io.CopyN(io.MultiWriter(fileMd5, silceMd5), tempFile, byteSize); err != nil && err != io.EOF {
+		if _, err := utils.CopyWithBufferN(io.MultiWriter(fileMd5, silceMd5), tempFile, byteSize); err != nil && err != io.EOF {
 			return nil, err
 		}
 		md5Byte := silceMd5.Sum(nil)
