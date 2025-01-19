@@ -13,9 +13,9 @@ import (
 
 	"github.com/alist-org/alist/v3/drivers/base"
 	"github.com/alist-org/alist/v3/internal/model"
+	"github.com/alist-org/alist/v3/internal/op"
 	"github.com/alist-org/alist/v3/pkg/utils"
 	"github.com/alist-org/alist/v3/pkg/utils/random"
-	"github.com/alist-org/alist/v3/internal/op"
 	"github.com/go-resty/resty/v2"
 	jsoniter "github.com/json-iterator/go"
 	log "github.com/sirupsen/logrus"
@@ -54,6 +54,9 @@ func getTime(t string) time.Time {
 }
 
 func (d *Yun139) refreshToken() error {
+	if d.ref == nil {
+		return d.ref.refreshToken()
+	}
 	url := "https://aas.caiyun.feixin.10086.cn:443/tellin/authTokenRefresh.do"
 	var resp RefreshTokenResp
 	decode, err := base64.StdEncoding.DecodeString(d.Authorization)
@@ -99,7 +102,7 @@ func (d *Yun139) request(pathname string, method string, callback base.ReqCallba
 	req.SetHeaders(map[string]string{
 		"Accept":         "application/json, text/plain, */*",
 		"CMS-DEVICE":     "default",
-		"Authorization":  "Basic " + d.Authorization,
+		"Authorization":  "Basic " + d.getAuthorization(),
 		"mcloud-channel": "1000101",
 		"mcloud-client":  "10701",
 		//"mcloud-route": "001",
@@ -151,7 +154,7 @@ func (d *Yun139) getFiles(catalogID string) ([]model.Obj, error) {
 			"catalogSortType": 0,
 			"contentSortType": 0,
 			"commonAccountInfo": base.Json{
-				"account":     d.Account,
+				"account":     d.getAccount(),
 				"accountType": 1,
 			},
 		}
@@ -199,7 +202,7 @@ func (d *Yun139) newJson(data map[string]interface{}) base.Json {
 		"cloudID":     d.CloudID,
 		"cloudType":   1,
 		"commonAccountInfo": base.Json{
-			"account":     d.Account,
+			"account":     d.getAccount(),
 			"accountType": 1,
 		},
 	}
@@ -220,10 +223,11 @@ func (d *Yun139) familyGetFiles(catalogID string) ([]model.Obj, error) {
 			"sortDirection": 1,
 		})
 		var resp QueryContentListResp
-		_, err := d.post("/orchestration/familyCloud/content/v1.0/queryContentList", data, &resp)
+		_, err := d.post("/orchestration/familyCloud-rebuild/content/v1.2/queryContentList", data, &resp)
 		if err != nil {
 			return nil, err
 		}
+		path := resp.Data.Path
 		for _, catalog := range resp.Data.CloudCatalogList {
 			f := model.Object{
 				ID:       catalog.CatalogID,
@@ -232,6 +236,7 @@ func (d *Yun139) familyGetFiles(catalogID string) ([]model.Obj, error) {
 				IsFolder: true,
 				Modified: getTime(catalog.LastUpdateTime),
 				Ctime:    getTime(catalog.CreateTime),
+				Path:     path, // 文件夹上一级的Path
 			}
 			files = append(files, &f)
 		}
@@ -243,16 +248,72 @@ func (d *Yun139) familyGetFiles(catalogID string) ([]model.Obj, error) {
 					Size:     content.ContentSize,
 					Modified: getTime(content.LastUpdateTime),
 					Ctime:    getTime(content.CreateTime),
+					Path:     path, // 文件所在目录的Path
 				},
 				Thumbnail: model.Thumbnail{Thumbnail: content.ThumbnailURL},
 				//Thumbnail: content.BigthumbnailURL,
 			}
 			files = append(files, &f)
 		}
-		if 100*pageNum > resp.Data.TotalCount {
+		if resp.Data.TotalCount == 0 {
 			break
 		}
 		pageNum++
+	}
+	return files, nil
+}
+
+func (d *Yun139) groupGetFiles(catalogID string) ([]model.Obj, error) {
+	pageNum := 1
+	files := make([]model.Obj, 0)
+	for {
+		data := d.newJson(base.Json{
+			"groupID":         d.CloudID,
+			"catalogID":       catalogID,
+			"contentSortType": 0,
+			"sortDirection":   1,
+			"startNumber":     pageNum,
+			"endNumber":       pageNum + 99,
+			"path":            catalogID,
+		})
+
+		var resp QueryGroupContentListResp
+		_, err := d.post("/orchestration/group-rebuild/content/v1.0/queryGroupContentList", data, &resp)
+		if err != nil {
+			return nil, err
+		}
+		path := resp.Data.GetGroupContentResult.ParentCatalogID
+		for _, catalog := range resp.Data.GetGroupContentResult.CatalogList {
+			f := model.Object{
+				ID:       catalog.CatalogID,
+				Name:     catalog.CatalogName,
+				Size:     0,
+				IsFolder: true,
+				Modified: getTime(catalog.UpdateTime),
+				Ctime:    getTime(catalog.CreateTime),
+				Path:     catalog.Path, // 文件夹的真实Path， root:/开头
+			}
+			files = append(files, &f)
+		}
+		for _, content := range resp.Data.GetGroupContentResult.ContentList {
+			f := model.ObjThumb{
+				Object: model.Object{
+					ID:       content.ContentID,
+					Name:     content.ContentName,
+					Size:     content.ContentSize,
+					Modified: getTime(content.UpdateTime),
+					Ctime:    getTime(content.CreateTime),
+					Path:     path, // 文件所在目录的Path
+				},
+				Thumbnail: model.Thumbnail{Thumbnail: content.ThumbnailURL},
+				//Thumbnail: content.BigthumbnailURL,
+			}
+			files = append(files, &f)
+		}
+		if pageNum > resp.Data.GetGroupContentResult.NodeCount {
+			break
+		}
+		pageNum = pageNum + 100
 	}
 	return files, nil
 }
@@ -262,11 +323,37 @@ func (d *Yun139) getLink(contentId string) (string, error) {
 		"appName":   "",
 		"contentID": contentId,
 		"commonAccountInfo": base.Json{
-			"account":     d.Account,
+			"account":     d.getAccount(),
 			"accountType": 1,
 		},
 	}
 	res, err := d.post("/orchestration/personalCloud/uploadAndDownload/v1.0/downloadRequest",
+		data, nil)
+	if err != nil {
+		return "", err
+	}
+	return jsoniter.Get(res, "data", "downloadURL").ToString(), nil
+}
+func (d *Yun139) familyGetLink(contentId string, path string) (string, error) {
+	data := d.newJson(base.Json{
+		"contentID": contentId,
+		"path":      path,
+	})
+	res, err := d.post("/orchestration/familyCloud-rebuild/content/v1.0/getFileDownLoadURL",
+		data, nil)
+	if err != nil {
+		return "", err
+	}
+	return jsoniter.Get(res, "data", "downloadURL").ToString(), nil
+}
+
+func (d *Yun139) groupGetLink(contentId string, path string) (string, error) {
+	data := d.newJson(base.Json{
+		"contentID": contentId,
+		"groupID":   d.CloudID,
+		"path":      path,
+	})
+	res, err := d.post("/orchestration/group-rebuild/groupManage/v1.0/getGroupFileDownLoadURL",
 		data, nil)
 	if err != nil {
 		return "", err
@@ -299,7 +386,7 @@ func (d *Yun139) personalRequest(pathname string, method string, callback base.R
 	}
 	req.SetHeaders(map[string]string{
 		"Accept":               "application/json, text/plain, */*",
-		"Authorization":        "Basic " + d.Authorization,
+		"Authorization":        "Basic " + d.getAuthorization(),
 		"Caller":               "web",
 		"Cms-Device":           "default",
 		"Mcloud-Channel":       "1000101",
@@ -429,4 +516,17 @@ func (d *Yun139) personalGetLink(fileId string) (string, error) {
 	} else {
 		return jsoniter.Get(res, "data", "url").ToString(), nil
 	}
+}
+
+func (d *Yun139) getAuthorization() string {
+	if d.ref != nil {
+		return d.ref.getAuthorization()
+	}
+	return d.Authorization
+}
+func (d *Yun139) getAccount() string {
+	if d.ref != nil {
+		return d.ref.getAccount()
+	}
+	return d.Account
 }

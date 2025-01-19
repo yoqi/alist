@@ -58,6 +58,15 @@ const (
 	TransmissionUri      = "transmission_uri"
 	TransmissionSeedtime = "transmission_seedtime"
 
+	// 115
+	Pan115TempDir = "115_temp_dir"
+
+	// pikpak
+	PikPakTempDir = "pikpak_temp_dir"
+
+	// thunder
+	ThunderTempDir = "thunder_temp_dir"
+
 	// single
 	Token         = "token"
 	IndexProgress = "index_progress"
@@ -72,6 +81,7 @@ const (
 	SSOApplicationName   = "sso_application_name"
 	SSOEndpointName      = "sso_endpoint_name"
 	SSOJwtPublicKey      = "sso_jwt_public_key"
+	SSOExtraScopes       = "sso_extra_scopes"
 	SSOAutoRegister      = "sso_auto_register"
 	SSODefaultDir        = "sso_default_dir"
 	SSODefaultPermission = "sso_default_permission"
@@ -96,6 +106,15 @@ const (
 	// qbittorrent
 	QbittorrentUrl      = "qbittorrent_url"
 	QbittorrentSeedtime = "qbittorrent_seedtime"
+
+	// ftp
+	FTPPublicHost        = "ftp_public_host"
+	FTPPasvPortMap       = "ftp_pasv_port_map"
+	FTPProxyUserAgent    = "ftp_proxy_user_agent"
+	FTPMandatoryTLS      = "ftp_mandatory_tls"
+	FTPImplicitTLS       = "ftp_implicit_tls"
+	FTPTLSPrivateKeyPath = "ftp_tls_private_key_path"
+	FTPTLSPublicCertPath = "ftp_tls_public_cert_path"
 )
 
 const (

@@ -29,7 +29,7 @@ func (t *Transmission) Run(task *tool.DownloadTask) error {
 }
 
 func (t *Transmission) Name() string {
-	return "transmission"
+	return "Transmission"
 }
 
 func (t *Transmission) Items() []model.SettingItem {
@@ -150,6 +150,7 @@ func (t *Transmission) Status(task *tool.DownloadTask) (*tool.Status, error) {
 		Err:       err,
 	}
 	s.Progress = *info.PercentDone * 100
+	s.TotalBytes = int64(*info.SizeWhenDone / 8)
 
 	switch *info.Status {
 	case transmissionrpc.TorrentStatusCheckWait,
