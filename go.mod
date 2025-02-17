@@ -7,7 +7,7 @@ toolchain go1.23.1
 require (
 	github.com/KirCute/ftpserverlib-pasvportmap v1.25.0
 	github.com/KirCute/sftpd-alist v0.0.12
-	github.com/SheltonZhu/115driver v1.0.32
+	github.com/SheltonZhu/115driver v1.0.34
 	github.com/Xhofe/go-cache v0.0.0-20240804043513-b1a71927bc21
 	github.com/Xhofe/rateg v0.0.0-20230728072201-251a4e1adad4
 	github.com/alist-org/gofakes3 v0.0.7
@@ -29,7 +29,6 @@ require (
 	github.com/dustinxie/ecc v0.0.0-20210511000915-959544187564
 	github.com/foxxorcat/mopan-sdk-go v0.1.6
 	github.com/foxxorcat/weiyun-sdk-go v0.1.3
-	github.com/gaoyb7/115drive-webdav v0.1.8
 	github.com/gin-contrib/cors v1.7.2
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-resty/resty/v2 v2.14.0
@@ -50,7 +49,6 @@ require (
 	github.com/minio/sio v0.4.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/ncw/swift/v2 v2.0.3
-	github.com/orzogc/fake115uploader v0.6.2
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.6
 	github.com/pquerna/otp v1.4.0
@@ -64,7 +62,7 @@ require (
 	github.com/u2takey/ffmpeg-go v0.5.0
 	github.com/upyun/go-sdk/v3 v3.0.4
 	github.com/winfsp/cgofuse v1.5.1-0.20230130140708-f87f5db493b5
-	github.com/xhofe/tache v0.1.3
+	github.com/xhofe/tache v0.1.5
 	github.com/xhofe/wopan-sdk-go v0.1.3
 	github.com/yeka/zip v0.0.0-20231116150916-03d6312748a9
 	github.com/zzzhr1990/go-common-entity v0.0.0-20221216044934-fd1c571e3a22
@@ -103,6 +101,8 @@ require (
 	github.com/ipfs/boxo v0.12.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
+	github.com/kr/text v0.2.0 // indirect
+	github.com/matoous/go-nanoid/v2 v2.1.0 // indirect
 	github.com/nwaples/rardecode/v2 v2.0.0-beta.4.0.20241112120701-034e449c6e78 // indirect
 	github.com/sorairolake/lzip-go v0.3.5 // indirect
 	github.com/taruti/bytepool v0.0.0-20160310082835-5e3a9ea56543 // indirect
@@ -139,7 +139,6 @@ require (
 	github.com/blevesearch/zapx/v13 v13.3.10 // indirect
 	github.com/blevesearch/zapx/v14 v14.3.10 // indirect
 	github.com/blevesearch/zapx/v15 v15.3.13 // indirect
-	github.com/bluele/gcache v0.0.2 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -172,7 +171,6 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/pgx/v5 v5.5.5 // indirect
-	github.com/jaevor/go-nanoid v1.3.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
@@ -242,7 +240,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.etcd.io/bbolt v1.3.8 // indirect
 	golang.org/x/arch v0.8.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
+	golang.org/x/sync v0.10.0
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/term v0.27.0 // indirect
 	golang.org/x/text v0.21.0

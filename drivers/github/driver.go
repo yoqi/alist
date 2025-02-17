@@ -5,6 +5,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	stdpath "path"
+	"strings"
+	"sync"
+	"text/template"
+
 	"github.com/alist-org/alist/v3/drivers/base"
 	"github.com/alist-org/alist/v3/internal/driver"
 	"github.com/alist-org/alist/v3/internal/errs"
@@ -12,12 +19,6 @@ import (
 	"github.com/alist-org/alist/v3/pkg/utils"
 	"github.com/go-resty/resty/v2"
 	log "github.com/sirupsen/logrus"
-	"io"
-	"net/http"
-	stdpath "path"
-	"strings"
-	"sync"
-	"text/template"
 )
 
 type Github struct {
@@ -83,10 +84,13 @@ func (d *Github) Init(ctx context.Context) error {
 	}
 	d.client = base.NewRestyClient().
 		SetHeader("Accept", "application/vnd.github.object+json").
-		SetHeader("Authorization", "Bearer "+d.Token).
 		SetHeader("X-GitHub-Api-Version", "2022-11-28").
 		SetLogger(log.StandardLogger()).
 		SetDebug(false)
+	token := strings.TrimSpace(d.Token)
+	if token != "" {
+		d.client = d.client.SetHeader("Authorization", "Bearer "+token)
+	}
 	if d.Ref == "" {
 		repo, err := d.getRepo()
 		if err != nil {
@@ -147,8 +151,13 @@ func (d *Github) Link(ctx context.Context, file model.Obj, args model.LinkArgs) 
 	if obj.Type == "submodule" {
 		return nil, errors.New("cannot download a submodule")
 	}
+	url := obj.DownloadURL
+	ghProxy := strings.TrimSpace(d.Addition.GitHubProxy)
+	if ghProxy != "" {
+		url = strings.Replace(url, "https://raw.githubusercontent.com", ghProxy, 1)
+	}
 	return &model.Link{
-		URL: obj.DownloadURL,
+		URL: url,
 	}, nil
 }
 
@@ -648,15 +657,15 @@ func (d *Github) createGitKeep(path, message string) error {
 	return nil
 }
 
-func (d *Github) putBlob(ctx context.Context, stream model.FileStreamer, up driver.UpdateProgress) (string, error) {
+func (d *Github) putBlob(ctx context.Context, s model.FileStreamer, up driver.UpdateProgress) (string, error) {
 	beforeContent := "{\"encoding\":\"base64\",\"content\":\""
 	afterContent := "\"}"
-	length := int64(len(beforeContent)) + calculateBase64Length(stream.GetSize()) + int64(len(afterContent))
+	length := int64(len(beforeContent)) + calculateBase64Length(s.GetSize()) + int64(len(afterContent))
 	beforeContentReader := strings.NewReader(beforeContent)
 	contentReader, contentWriter := io.Pipe()
 	go func() {
 		encoder := base64.NewEncoder(base64.StdEncoding, contentWriter)
-		if _, err := io.Copy(encoder, stream); err != nil {
+		if _, err := utils.CopyWithBuffer(encoder, s); err != nil {
 			_ = contentWriter.CloseWithError(err)
 			return
 		}
@@ -666,23 +675,29 @@ func (d *Github) putBlob(ctx context.Context, stream model.FileStreamer, up driv
 	afterContentReader := strings.NewReader(afterContent)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		fmt.Sprintf("https://api.github.com/repos/%s/%s/git/blobs", d.Owner, d.Repo),
-		&ReaderWithProgress{
-			Reader:   io.MultiReader(beforeContentReader, contentReader, afterContentReader),
-			Length:   length,
-			Progress: up,
-		})
+		driver.NewLimitedUploadStream(ctx, &driver.ReaderUpdatingProgress{
+			Reader: &driver.SimpleReaderWithSize{
+				Reader: io.MultiReader(beforeContentReader, contentReader, afterContentReader),
+				Size:   length,
+			},
+			UpdateProgress: up,
+		}))
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "Bearer "+d.Token)
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	token := strings.TrimSpace(d.Token)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	req.ContentLength = length
 
 	res, err := base.HttpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
+	defer res.Body.Close()
 	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
 		return "", err
