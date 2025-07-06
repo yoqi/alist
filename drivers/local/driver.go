@@ -14,14 +14,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alist-org/alist/v3/internal/conf"
-	"github.com/alist-org/alist/v3/internal/driver"
-	"github.com/alist-org/alist/v3/internal/errs"
-	"github.com/alist-org/alist/v3/internal/model"
-	"github.com/alist-org/alist/v3/internal/sign"
-	"github.com/alist-org/alist/v3/pkg/utils"
-	"github.com/alist-org/alist/v3/server/common"
-	"github.com/alist-org/times"
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/driver"
+	"github.com/OpenListTeam/OpenList/v4/internal/errs"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/internal/sign"
+	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	"github.com/OpenListTeam/OpenList/v4/server/common"
+	"github.com/OpenListTeam/times"
 	cp "github.com/otiai10/copy"
 	log "github.com/sirupsen/logrus"
 	_ "golang.org/x/image/webp"
@@ -128,11 +128,9 @@ func (d *Local) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([
 	}
 	var files []model.Obj
 	for _, f := range rawFiles {
-		if !d.ShowHidden && strings.HasPrefix(f.Name(), ".") {
-			continue
+		if d.ShowHidden || !isHidden(f, fullPath) {
+			files = append(files, d.FileInfoToObj(ctx, f, args.ReqPath, fullPath))
 		}
-		file := d.FileInfoToObj(ctx, f, args.ReqPath, fullPath)
-		files = append(files, file)
 	}
 	return files, nil
 }
@@ -141,7 +139,7 @@ func (d *Local) FileInfoToObj(ctx context.Context, f fs.FileInfo, reqPath string
 	if d.Thumbnail {
 		typeName := utils.GetFileType(f.Name())
 		if typeName == conf.IMAGE || typeName == conf.VIDEO {
-			thumb = common.GetApiUrl(common.GetHttpReq(ctx)) + stdpath.Join("/d", reqPath, f.Name())
+			thumb = common.GetApiUrl(ctx) + stdpath.Join("/d", reqPath, f.Name())
 			thumb = utils.EncodePath(thumb, true)
 			thumb += "?type=thumb&sign=" + sign.Sign(stdpath.Join(reqPath, f.Name()))
 		}
@@ -244,7 +242,7 @@ func (d *Local) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (
 			}
 			link.MFile = open
 		} else {
-			link.MFile = model.NewNopMFile(bytes.NewReader(buf.Bytes()))
+			link.MFile = bytes.NewReader(buf.Bytes())
 			//link.Header.Set("Content-Length", strconv.Itoa(buf.Len()))
 		}
 	} else {

@@ -1,83 +1,62 @@
 <div align="center">
-  <a href="https://alist.nn.ci"><img width="100px" alt="logo" src="https://cdn.jsdelivr.net/gh/alist-org/logo@main/logo.svg"/></a>
-  <p><em>🗂️A file list program that supports multiple storages, powered by Gin and Solidjs.</em></p>
-<div>
-  <a href="https://goreportcard.com/report/github.com/alist-org/alist/v3">
-    <img src="https://goreportcard.com/badge/github.com/alist-org/alist/v3" alt="latest version" />
-  </a>
-  <a href="https://github.com/alist-org/alist/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Xhofe/alist" alt="License" />
-  </a>
-  <a href="https://github.com/alist-org/alist/actions?query=workflow%3ABuild">
-    <img src="https://img.shields.io/github/actions/workflow/status/Xhofe/alist/build.yml?branch=main" alt="Build status" />
-  </a>
-  <a href="https://github.com/alist-org/alist/releases">
-    <img src="https://img.shields.io/github/release/Xhofe/alist" alt="latest version" />
-  </a>
-  <a title="Crowdin" target="_blank" href="https://crwd.in/alist">
-    <img src="https://badges.crowdin.net/alist/localized.svg">
-  </a>
-</div>
-<div>
-  <a href="https://github.com/alist-org/alist/discussions">
-    <img src="https://img.shields.io/github/discussions/Xhofe/alist?color=%23ED8936" alt="discussions" />
-  </a>
-  <a href="https://discord.gg/F4ymsH4xv2">
-    <img src="https://img.shields.io/discord/1018870125102895134?logo=discord" alt="discussions" />
-  </a>
-  <a href="https://github.com/alist-org/alist/releases">
-    <img src="https://img.shields.io/github/downloads/Xhofe/alist/total?color=%239F7AEA&logo=github" alt="Downloads" />
-  </a>
-  <a href="https://hub.docker.com/r/xhofe/alist">
-    <img src="https://img.shields.io/docker/pulls/xhofe/alist?color=%2348BB78&logo=docker&label=pulls" alt="Downloads" />
-  </a>
-  <a href="https://alist.nn.ci/guide/sponsor.html">
-    <img src="https://img.shields.io/badge/%24-sponsor-F87171.svg" alt="sponsor" />
-  </a>
-</div>
+  <img style="width: 128px; height: 128px;" src="https://raw.githubusercontent.com/OpenListTeam/Logo/main/logo.svg" alt="logo" />
+
+  <p><em>OpenList is a resilient, long-term governance, community-driven fork of AList — built to defend open source against trust-based attacks.</em></p>
+
+  <img src="https://goreportcard.com/badge/github.com/OpenListTeam/OpenList/v3" alt="latest version" />
+  <a href="https://github.com/OpenListTeam/OpenList/blob/main/LICENSE"><img src="https://img.shields.io/github/license/OpenListTeam/OpenList" alt="License" /></a>
+  <a href="https://github.com/OpenListTeam/OpenList/actions?query=workflow%3ABuild"><img src="https://img.shields.io/github/actions/workflow/status/OpenListTeam/OpenList/build.yml?branch=main" alt="Build status" /></a>
+  <a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/release/OpenListTeam/OpenList" alt="latest version" /></a>
+
+  <a href="https://github.com/OpenListTeam/OpenList/discussions"><img src="https://img.shields.io/github/discussions/OpenListTeam/OpenList?color=%23ED8936" alt="discussions" /></a>
+  <a href="https://github.com/OpenListTeam/OpenList/releases"><img src="https://img.shields.io/github/downloads/OpenListTeam/OpenList/total?color=%239F7AEA&logo=github" alt="Downloads" /></a>
 </div>
 
 ---
 
-English | [中文](./README_cn.md) | [日本語](./README_ja.md) | [Contributing](./CONTRIBUTING.md) | [CODE_OF_CONDUCT](./CODE_OF_CONDUCT.md)
+- English | [中文](./README_cn.md) | [日本語](./README_ja.md) | [Dutch](./README_nl.md)
+
+- [Contributing](./CONTRIBUTING.md)
+- [CODE OF CONDUCT](./CODE_OF_CONDUCT.md)
+- [LICENSE](./LICENSE)
 
 ## Features
 
 - [x] Multiple storages
-    - [x] Local storage
-    - [x] [Aliyundrive](https://www.alipan.com/)
-    - [x] OneDrive / Sharepoint ([global](https://www.office.com/), [cn](https://portal.partner.microsoftonline.cn),de,us)
-    - [x] [189cloud](https://cloud.189.cn) (Personal, Family)
-    - [x] [GoogleDrive](https://drive.google.com/)
-    - [x] [123pan](https://www.123pan.com/)
-    - [x] FTP / SFTP
-    - [x] [PikPak](https://www.mypikpak.com/)
-    - [x] [S3](https://aws.amazon.com/s3/)
-    - [x] [Seafile](https://seafile.com/)
-    - [x] [UPYUN Storage Service](https://www.upyun.com/products/file-storage)
-    - [x] WebDav(Support OneDrive/SharePoint without API)
-    - [x] Teambition([China](https://www.teambition.com/ ),[International](https://us.teambition.com/ ))
-    - [x] [Mediatrack](https://www.mediatrack.cn/)
-    - [x] [139yun](https://yun.139.com/) (Personal, Family, Group)
-    - [x] [YandexDisk](https://disk.yandex.com/)
-    - [x] [BaiduNetdisk](http://pan.baidu.com/)
-    - [x] [Terabox](https://www.terabox.com/main)
-    - [x] [UC](https://drive.uc.cn)
-    - [x] [Quark](https://pan.quark.cn)
-    - [x] [Thunder](https://pan.xunlei.com)
-    - [x] [Lanzou](https://www.lanzou.com/)
-    - [x] [ILanzou](https://www.ilanzou.com/)
-    - [x] [Aliyundrive share](https://www.alipan.com/)
-    - [x] [Google photo](https://photos.google.com/)
-    - [x] [Mega.nz](https://mega.nz)
-    - [x] [Baidu photo](https://photo.baidu.com/)
-    - [x] SMB
-    - [x] [115](https://115.com/)
-    - [X] Cloudreve
-    - [x] [Dropbox](https://www.dropbox.com/)
-    - [x] [FeijiPan](https://www.feijipan.com/)
-    - [x] [dogecloud](https://www.dogecloud.com/product/oss)
-    - [x] [Azure Blob Storage](https://azure.microsoft.com/products/storage/blobs)
+  - [x] Local storage
+  - [x] [Aliyundrive](https://www.alipan.com)
+  - [x] OneDrive / Sharepoint ([Global](https://www.microsoft.com/en-us/microsoft-365/onedrive/online-cloud-storage), [CN](https://portal.partner.microsoftonline.cn), DE, US)
+  - [x] [189cloud](https://cloud.189.cn) (Personal, Family)
+  - [x] [GoogleDrive](https://drive.google.com)
+  - [x] [123pan](https://www.123pan.com)
+  - [x] [FTP / SFTP](https://en.wikipedia.org/wiki/File_Transfer_Protocol)
+  - [x] [PikPak](https://www.mypikpak.com)
+  - [x] [S3](https://aws.amazon.com/s3)
+  - [x] [Seafile](https://seafile.com)
+  - [x] [UPYUN Storage Service](https://www.upyun.com/products/file-storage)
+  - [x] [WebDAV](https://en.wikipedia.org/wiki/WebDAV)
+  - [x] Teambition([China](https://www.teambition.com), [International](https://us.teambition.com))
+  - [x] [Mediatrack](https://www.mediatrack.cn)
+  - [x] [139yun](https://yun.139.com) (Personal, Family, Group)
+  - [x] [YandexDisk](https://disk.yandex.com)
+  - [x] [BaiduNetdisk](http://pan.baidu.com)
+  - [x] [Terabox](https://www.terabox.com/main)
+  - [x] [UC](https://drive.uc.cn)
+  - [x] [Quark](https://pan.quark.cn)
+  - [x] [Thunder](https://pan.xunlei.com)
+  - [x] [Lanzou](https://www.lanzou.com)
+  - [x] [ILanzou](https://www.ilanzou.com)
+  - [x] [Aliyundrive share](https://www.alipan.com)
+  - [x] [Google photo](https://photos.google.com)
+  - [x] [Mega.nz](https://mega.nz)
+  - [x] [Baidu photo](https://photo.baidu.com)
+  - [x] [SMB](https://en.wikipedia.org/wiki/Server_Message_Block)
+  - [x] [115](https://115.com)
+  - [X] [Cloudreve](https://cloudreve.org)
+  - [x] [Dropbox](https://www.dropbox.com)
+  - [x] [FeijiPan](https://www.feijipan.com)
+  - [x] [dogecloud](https://www.dogecloud.com/product/oss)
+  - [x] [Azure Blob Storage](https://azure.microsoft.com/products/storage/blobs)
 - [x] Easy to deploy and out-of-the-box
 - [x] File preview (PDF, markdown, code, plain text, ...)
 - [x] Image preview in gallery mode
@@ -88,8 +67,8 @@ English | [中文](./README_cn.md) | [日本語](./README_ja.md) | [Contributing
 - [x] Dark mode
 - [x] I18n
 - [x] Protected routes (password protection and authentication)
-- [x] WebDav (see https://alist.nn.ci/guide/webdav.html for details)
-- [x] [Docker Deploy](https://hub.docker.com/r/xhofe/alist)
+- [x] WebDAV
+- [x] Docker Deploy
 - [x] Cloudflare Workers proxy
 - [x] File/Folder package download
 - [x] Web upload(Can allow visitors to upload), delete, mkdir, rename, move and copy
@@ -99,44 +78,43 @@ English | [中文](./README_cn.md) | [日本語](./README_ja.md) | [Contributing
 
 ## Document
 
-<https://alistgo.com/>
+- 📘 [Docs & Install Guide](https://docs.oplist.org)
+- 📚 [Backup Docs Site](https://docs.openlist.team)
 
 ## Demo
 
-<https://al.nn.ci>
+N/A (to be rebuilt)
 
 ## Discussion
 
-Please go to our [discussion forum](https://github.com/alist-org/alist/discussions) for general questions, **issues are for bug reports and feature requests only.**
-
-## Sponsor
-
-AList is an open-source software, if you happen to like this project and want me to keep going, please consider sponsoring me or providing a single donation! Thanks for all the love and support:
-https://alist.nn.ci/guide/sponsor.html
-
-### Special sponsors
-
-- [VidHub](https://apps.apple.com/app/apple-store/id1659622164?pt=118612019&ct=alist&mt=8) - An elegant cloud video player within the Apple ecosystem. Support for iPhone, iPad, Mac, and Apple TV.
-- [亚洲云](https://www.asiayun.com/aff/QQCOOQKZ) - 高防服务器|服务器租用|福州高防|广东电信|香港服务器|美国服务器|海外服务器 - 国内靠谱的企业级云计算服务提供商 (sponsored Chinese API server)
-- [找资源](http://zhaoziyuan2.cc/) - 阿里云盘资源搜索引擎
-
-## Contributors
-
-Thanks goes to these wonderful people:
-
-[![Contributors](http://contrib.nn.ci/api?repo=alist-org/alist&repo=alist-org/alist-web&repo=alist-org/docs)](https://github.com/alist-org/alist/graphs/contributors)
+Please refer to [*Discussions*](https://github.com/OpenListTeam/OpenList/discussions) for raising general questions, ***Issues* is for bug reports and feature requests only.**
 
 ## License
 
-The `AList` is open-source software licensed under the AGPL-3.0 license.
+The `OpenList` is open-source software licensed under the [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt) license.
 
 ## Disclaimer
-- This program is a free and open source project. It is designed to share files on the network disk, which is convenient for downloading and learning Golang. Please abide by relevant laws and regulations when using it, and do not abuse it;
-- This program is implemented by calling the official sdk/interface, without destroying the official interface behavior;
-- This program only does 302 redirect/traffic forwarding, and does not intercept, store, or tamper with any user data;
-- Before using this program, you should understand and bear the corresponding risks, including but not limited to account ban, download speed limit, etc., which is none of this program's business;
-- If there is any infringement, please contact me by [email](mailto:i@nn.ci), and it will be dealt with in time.
 
----
+- This project is a free and open-source software designed to facilitate file sharing via net disks, primarily intended to support the downloading and learning of the Go programming language.
+- Please comply with all applicable laws and regulations when using this software. Any form of misuse is strictly prohibited.
+- The software is based on official SDKs or APIs without any modification, disruption, or interference with their behavior.
+- It only performs HTTP 302 redirects or traffic forwarding, and does not intercept, store, or tamper with any user data.
+- This project is not affiliated with any official platform or service provider.
+- The software is provided "as is", without any warranties of any kind, either express or implied, including but not limited to warranties of merchantability or fitness for a particular purpose.
+- The maintainers are not liable for any direct or indirect damages arising from the use of, or inability to use, this software.
+- You are solely responsible for any risks associated with using this software, including but not limited to account bans or download speed limitations.
+- This project is licensed under the [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.txt) License. Please see the [LICENSE](./LICENSE) file for details.
 
-> [@GitHub](https://github.com/alist-org) · [@TelegramGroup](https://t.me/alist_chat) · [@Discord](https://discord.gg/F4ymsH4xv2)
+## Contact Us
+
+- [@GitHub](https://github.com/OpenListTeam)
+- [Telegram Group](https://t.me/OpenListTeam)
+- [Telegram Channel](https://t.me/OpenListOfficial)
+
+## Contributors
+
+We sincerely thank the author [Xhofe](https://github.com/Xhofe) of the original project [AlistGo/alist](https://github.com/AlistGo/alist) and all other contributors.
+
+Thanks goes to these wonderful people:
+
+[![Contributors](https://contrib.rocks/image?repo=OpenListTeam/OpenList)](https://github.com/OpenListTeam/OpenList/graphs/contributors)

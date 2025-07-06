@@ -1,17 +1,18 @@
 package handles
 
 import (
-	"github.com/alist-org/alist/v3/internal/model"
-	"github.com/alist-org/alist/v3/internal/task"
 	"math"
 	"time"
 
-	"github.com/alist-org/alist/v3/internal/fs"
-	"github.com/alist-org/alist/v3/internal/offline_download/tool"
-	"github.com/alist-org/alist/v3/pkg/utils"
-	"github.com/alist-org/alist/v3/server/common"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/internal/task"
+
+	"github.com/OpenListTeam/OpenList/v4/internal/fs"
+	"github.com/OpenListTeam/OpenList/v4/internal/offline_download/tool"
+	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
-	"github.com/xhofe/tache"
+	"github.com/OpenListTeam/tache"
 )
 
 type TaskInfo struct {
@@ -218,6 +219,7 @@ func taskRoute[T task.TaskExtensionInfo](g *gin.RouterGroup, manager task.Manage
 func SetupTaskRoute(g *gin.RouterGroup) {
 	taskRoute(g.Group("/upload"), fs.UploadTaskManager)
 	taskRoute(g.Group("/copy"), fs.CopyTaskManager)
+	taskRoute(g.Group("/move"), fs.MoveTaskManager)
 	taskRoute(g.Group("/offline_download"), tool.DownloadTaskManager)
 	taskRoute(g.Group("/offline_download_transfer"), tool.TransferTaskManager)
 	taskRoute(g.Group("/decompress"), fs.ArchiveDownloadTaskManager)

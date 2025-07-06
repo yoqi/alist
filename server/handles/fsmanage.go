@@ -2,18 +2,19 @@ package handles
 
 import (
 	"fmt"
-	"github.com/alist-org/alist/v3/internal/task"
 	"io"
 	stdpath "path"
 
-	"github.com/alist-org/alist/v3/internal/errs"
-	"github.com/alist-org/alist/v3/internal/fs"
-	"github.com/alist-org/alist/v3/internal/model"
-	"github.com/alist-org/alist/v3/internal/op"
-	"github.com/alist-org/alist/v3/internal/sign"
-	"github.com/alist-org/alist/v3/pkg/generic"
-	"github.com/alist-org/alist/v3/pkg/utils"
-	"github.com/alist-org/alist/v3/server/common"
+	"github.com/OpenListTeam/OpenList/v4/internal/task"
+
+	"github.com/OpenListTeam/OpenList/v4/internal/errs"
+	"github.com/OpenListTeam/OpenList/v4/internal/fs"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/OpenListTeam/OpenList/v4/internal/sign"
+	"github.com/OpenListTeam/OpenList/v4/pkg/generic"
+	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -87,6 +88,7 @@ func FsMove(c *gin.Context) {
 		common.ErrorResp(c, err, 403)
 		return
 	}
+
 	if !req.Overwrite {
 		for _, name := range req.Names {
 			if res, _ := fs.Get(c, stdpath.Join(dstDir, name), &fs.GetArgs{NoLog: true}); res != nil {
@@ -95,14 +97,32 @@ func FsMove(c *gin.Context) {
 			}
 		}
 	}
+
+	// Create all tasks immediately without any synchronous validation
+	// All validation will be done asynchronously in the background
+	var addedTasks []task.TaskExtensionInfo
 	for i, name := range req.Names {
-		err := fs.Move(c, stdpath.Join(srcDir, name), dstDir, len(req.Names) > i+1)
+		t, err := fs.MoveWithTaskAndValidation(c, stdpath.Join(srcDir, name), dstDir, !req.Overwrite, len(req.Names) > i+1)
+		if t != nil {
+			addedTasks = append(addedTasks, t)
+		}
 		if err != nil {
 			common.ErrorResp(c, err, 500)
 			return
 		}
 	}
-	common.SuccessResp(c)
+
+	// Return immediately with task information
+	if len(addedTasks) > 0 {
+		common.SuccessResp(c, gin.H{
+			"message": fmt.Sprintf("Successfully created %d move task(s)", len(addedTasks)),
+			"tasks":   getTaskInfos(addedTasks),
+		})
+	} else {
+		common.SuccessResp(c, gin.H{
+			"message": "Move operations completed immediately",
+		})
+	}
 }
 
 func FsCopy(c *gin.Context) {
@@ -130,6 +150,7 @@ func FsCopy(c *gin.Context) {
 		common.ErrorResp(c, err, 403)
 		return
 	}
+
 	if !req.Overwrite {
 		for _, name := range req.Names {
 			if res, _ := fs.Get(c, stdpath.Join(dstDir, name), &fs.GetArgs{NoLog: true}); res != nil {
@@ -138,6 +159,9 @@ func FsCopy(c *gin.Context) {
 			}
 		}
 	}
+
+	// Create all tasks immediately without any synchronous validation
+	// All validation will be done asynchronously in the background
 	var addedTasks []task.TaskExtensionInfo
 	for i, name := range req.Names {
 		t, err := fs.Copy(c, stdpath.Join(srcDir, name), dstDir, len(req.Names) > i+1)
@@ -149,9 +173,18 @@ func FsCopy(c *gin.Context) {
 			return
 		}
 	}
-	common.SuccessResp(c, gin.H{
-		"tasks": getTaskInfos(addedTasks),
-	})
+
+	// Return immediately with task information
+	if len(addedTasks) > 0 {
+		common.SuccessResp(c, gin.H{
+			"message": fmt.Sprintf("Successfully created %d copy task(s)", len(addedTasks)),
+			"tasks":   getTaskInfos(addedTasks),
+		})
+	} else {
+		common.SuccessResp(c, gin.H{
+			"message": "Copy operations completed immediately",
+		})
+	}
 }
 
 type RenameReq struct {
@@ -346,25 +379,24 @@ func Link(c *gin.Context) {
 	if storage.Config().OnlyLocal {
 		common.SuccessResp(c, model.Link{
 			URL: fmt.Sprintf("%s/p%s?d&sign=%s",
-				common.GetApiUrl(c.Request),
+				common.GetApiUrl(c),
 				utils.EncodePath(rawPath, true),
 				sign.Sign(rawPath)),
 		})
 		return
 	}
-	link, _, err := fs.Link(c, rawPath, model.LinkArgs{IP: c.ClientIP(), Header: c.Request.Header, HttpReq: c.Request})
+	link, _, err := fs.Link(c, rawPath, model.LinkArgs{IP: c.ClientIP(), Header: c.Request.Header})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
 	}
-	if link.MFile != nil {
-		defer func(ReadSeekCloser io.ReadCloser) {
-			err := ReadSeekCloser.Close()
+	if clr, ok := link.MFile.(io.Closer); ok {
+		defer func(clr io.Closer) {
+			err := clr.Close()
 			if err != nil {
 				log.Errorf("close link data error: %v", err)
 			}
-		}(link.MFile)
+		}(clr)
 	}
 	common.SuccessResp(c, link)
-	return
 }

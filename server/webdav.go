@@ -1,19 +1,18 @@
 package server
 
 import (
-	"context"
 	"crypto/subtle"
-	"github.com/alist-org/alist/v3/internal/stream"
-	"github.com/alist-org/alist/v3/server/middlewares"
 	"net/http"
 	"path"
 	"strings"
 
-	"github.com/alist-org/alist/v3/internal/conf"
-	"github.com/alist-org/alist/v3/internal/model"
-	"github.com/alist-org/alist/v3/internal/op"
-	"github.com/alist-org/alist/v3/internal/setting"
-	"github.com/alist-org/alist/v3/server/webdav"
+	"github.com/OpenListTeam/OpenList/v4/internal/stream"
+	"github.com/OpenListTeam/OpenList/v4/server/middlewares"
+
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/OpenListTeam/OpenList/v4/internal/setting"
+	"github.com/OpenListTeam/OpenList/v4/server/webdav"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -44,9 +43,7 @@ func WebDav(dav *gin.RouterGroup) {
 }
 
 func ServeWebDAV(c *gin.Context) {
-	user := c.MustGet("user").(*model.User)
-	ctx := context.WithValue(c.Request.Context(), "user", user)
-	handler.ServeHTTP(c.Writer, c.Request.WithContext(ctx))
+	handler.ServeHTTP(c.Writer, c.Request.WithContext(c))
 }
 
 func WebDAVAuth(c *gin.Context) {
@@ -76,7 +73,7 @@ func WebDAVAuth(c *gin.Context) {
 			c.Next()
 			return
 		}
-		c.Writer.Header()["WWW-Authenticate"] = []string{`Basic realm="alist"`}
+		c.Writer.Header()["WWW-Authenticate"] = []string{`Basic realm="openlist"`}
 		c.Status(http.StatusUnauthorized)
 		c.Abort()
 		return

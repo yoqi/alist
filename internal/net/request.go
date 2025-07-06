@@ -3,6 +3,7 @@ package net
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alist-org/alist/v3/pkg/utils"
+	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 
-	"github.com/alist-org/alist/v3/pkg/http_range"
+	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/aws/aws-sdk-go/aws/awsutil"
 	log "github.com/sirupsen/logrus"
 )
@@ -119,7 +120,7 @@ type ConcurrencyLimit struct {
 	Limit int // 需要大于0
 }
 
-var ErrExceedMaxConcurrency = fmt.Errorf("ExceedMaxConcurrency")
+var ErrExceedMaxConcurrency = errors.New("ExceedMaxConcurrency")
 
 func (l *ConcurrencyLimit) sub() error {
 	l._m.Lock()
@@ -156,7 +157,6 @@ func (d *downloader) download() (io.ReadCloser, error) {
 	if err := d.concurrencyCheck(); err != nil {
 		return nil, err
 	}
-	d.ctx, d.cancel = context.WithCancelCause(d.ctx)
 
 	maxPart := int(d.params.Range.Length / int64(d.cfg.PartSize))
 	if d.params.Range.Length%int64(d.cfg.PartSize) > 0 {
@@ -165,21 +165,32 @@ func (d *downloader) download() (io.ReadCloser, error) {
 	if maxPart < d.cfg.Concurrency {
 		d.cfg.Concurrency = maxPart
 	}
+	if d.params.Range.Length == 0 {
+		d.cfg.Concurrency = 1
+	}
+
 	log.Debugf("cfgConcurrency:%d", d.cfg.Concurrency)
 
-	if d.cfg.Concurrency == 1 {
-		if d.cfg.ConcurrencyLimit != nil {
-			go func() {
-				<-d.ctx.Done()
-				d.concurrencyFinish()
-			}()
-		}
+	if maxPart == 1 {
 		resp, err := d.cfg.HttpClient(d.ctx, d.params)
 		if err != nil {
+			d.concurrencyFinish()
 			return nil, err
 		}
+		closeFunc := resp.Body.Close
+		resp.Body = utils.NewReadCloser(resp.Body, func() error {
+			d.m.Lock()
+			defer d.m.Unlock()
+			if closeFunc != nil {
+				d.concurrencyFinish()
+				err = closeFunc()
+				closeFunc = nil
+			}
+			return err
+		})
 		return resp.Body, nil
 	}
+	d.ctx, d.cancel = context.WithCancelCause(d.ctx)
 
 	// workers
 	d.chunkChannel = make(chan chunk, d.cfg.Concurrency)
@@ -261,24 +272,27 @@ func (d *downloader) sendChunkTask(newConcurrency bool) error {
 
 // when the final reader Close, we interrupt
 func (d *downloader) interrupt() error {
-	if d.written != d.params.Range.Length {
+	d.m.Lock()
+	defer d.m.Unlock()
+	err := d.err
+	if err == nil && d.written != d.params.Range.Length {
 		log.Debugf("Downloader interrupt before finish")
-		if d.getErr() == nil {
-			d.setErr(fmt.Errorf("interrupted"))
-		}
+		err := fmt.Errorf("interrupted")
+		d.err = err
 	}
-	d.cancel(d.err)
-	defer func() {
-		close(d.chunkChannel)
+	close(d.chunkChannel)
+	if d.bufs != nil {
+		d.cancel(err)
 		for _, buf := range d.bufs {
 			buf.Close()
 		}
+		d.bufs = nil
 		if d.concurrency > 0 {
 			d.concurrency = -d.concurrency
 		}
 		log.Debugf("maxConcurrency:%d", d.cfg.Concurrency+d.concurrency)
-	}()
-	return d.err
+	}
+	return err
 }
 func (d *downloader) getBuf(id int) (b *Buf) {
 	return d.bufs[id%len(d.bufs)]
@@ -298,31 +312,35 @@ func (d *downloader) finishBuf(id int) (isLast bool, nextBuf *Buf) {
 // downloadPart is an individual goroutine worker reading from the ch channel
 // and performing Http request on the data with a given byte range.
 func (d *downloader) downloadPart() {
-	//defer d.wg.Done()
+	defer d.concurrencyFinish()
 	for {
-		c, ok := <-d.chunkChannel
-		if !ok {
-			break
-		}
-		if d.getErr() != nil {
-			// Drain the channel if there is an error, to prevent deadlocking
-			// of download producer.
-			break
-		}
-		if err := d.downloadChunk(&c); err != nil {
-			if err == errCancelConcurrency {
-				break
+		select {
+		case <-d.ctx.Done():
+			return
+		case c, ok := <-d.chunkChannel:
+			if !ok {
+				return
 			}
-			if err == context.Canceled {
-				if e := context.Cause(d.ctx); e != nil {
-					err = e
+			if d.getErr() != nil {
+				// Drain the channel if there is an error, to prevent deadlocking
+				// of download producer.
+				return
+			}
+			if err := d.downloadChunk(&c); err != nil {
+				if err == errCancelConcurrency {
+					return
 				}
+				if err == context.Canceled {
+					if e := context.Cause(d.ctx); e != nil {
+						err = e
+					}
+				}
+				d.setErr(err)
+				d.cancel(err)
+				return
 			}
-			d.setErr(err)
-			d.cancel(err)
 		}
 	}
-	d.concurrencyFinish()
 }
 
 // downloadChunk downloads the chunk
@@ -353,7 +371,7 @@ func (d *downloader) downloadChunk(ch *chunk) error {
 		if e, ok := err.(*errNeedRetry); ok {
 			err = e.Unwrap()
 			if n > 0 {
-				// 测试：下载时 断开 alist向云盘发起的下载连接
+				// 测试：下载时 断开openlist向云盘发起的下载连接
 				// 校验：下载完后校验文件哈希值 一致
 				d.incrWritten(n)
 				ch.start += n
@@ -374,8 +392,8 @@ func (d *downloader) downloadChunk(ch *chunk) error {
 	return err
 }
 
-var errCancelConcurrency = fmt.Errorf("cancel concurrency")
-var errInfiniteRetry = fmt.Errorf("infinite retry")
+var errCancelConcurrency = errors.New("cancel concurrency")
+var errInfiniteRetry = errors.New("infinite retry")
 
 func (d *downloader) tryDownloadChunk(params *HttpRequestParams, ch *chunk) (int64, error) {
 	resp, err := d.cfg.HttpClient(d.ctx, params)
@@ -615,6 +633,9 @@ type Buf struct {
 	ctx    context.Context
 	off    int
 	rw     sync.Mutex
+
+	readSignal  chan struct{}
+	readPending bool
 }
 
 // NewBuf is a buffer that can have 1 read & 1 write at the same time.
@@ -624,9 +645,16 @@ func NewBuf(ctx context.Context, maxSize int) *Buf {
 		ctx:    ctx,
 		buffer: bytes.NewBuffer(make([]byte, 0, maxSize)),
 		size:   maxSize,
+
+		readSignal: make(chan struct{}, 1),
 	}
 }
 func (br *Buf) Reset(size int) {
+	br.rw.Lock()
+	defer br.rw.Unlock()
+	if br.buffer == nil {
+		return
+	}
 	br.buffer.Reset()
 	br.size = size
 	br.off = 0
@@ -642,27 +670,34 @@ func (br *Buf) Read(p []byte) (n int, err error) {
 	if br.off >= br.size {
 		return 0, io.EOF
 	}
-	br.rw.Lock()
-	n, err = br.buffer.Read(p)
-	br.rw.Unlock()
-	if err == nil {
-		br.off += n
-		return n, err
-	}
-	if err != io.EOF {
-		return n, err
-	}
-	if n != 0 {
-		br.off += n
-		return n, nil
-	}
-	// n==0, err==io.EOF
-	// wait for new write for 200ms
-	select {
-	case <-br.ctx.Done():
-		return 0, br.ctx.Err()
-	case <-time.After(time.Millisecond * 200):
-		return 0, nil
+	for {
+		br.rw.Lock()
+		if br.buffer != nil {
+			n, err = br.buffer.Read(p)
+		} else {
+			err = io.ErrClosedPipe
+		}
+		if err != nil && err != io.EOF {
+			br.rw.Unlock()
+			return
+		}
+		if n > 0 {
+			br.off += n
+			br.rw.Unlock()
+			return n, nil
+		}
+		br.readPending = true
+		br.rw.Unlock()
+		// n==0, err==io.EOF
+		select {
+		case <-br.ctx.Done():
+			return 0, br.ctx.Err()
+		case _, ok := <-br.readSignal:
+			if !ok {
+				return 0, io.ErrClosedPipe
+			}
+			continue
+		}
 	}
 }
 
@@ -672,10 +707,23 @@ func (br *Buf) Write(p []byte) (n int, err error) {
 	}
 	br.rw.Lock()
 	defer br.rw.Unlock()
+	if br.buffer == nil {
+		return 0, io.ErrClosedPipe
+	}
 	n, err = br.buffer.Write(p)
+	if br.readPending {
+		br.readPending = false
+		select {
+		case br.readSignal <- struct{}{}:
+		default:
+		}
+	}
 	return
 }
 
 func (br *Buf) Close() {
+	br.rw.Lock()
+	defer br.rw.Unlock()
 	br.buffer = nil
+	close(br.readSignal)
 }

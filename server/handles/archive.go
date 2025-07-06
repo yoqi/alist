@@ -3,20 +3,20 @@ package handles
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/alist-org/alist/v3/internal/task"
-	"net/url"
 	stdpath "path"
 
-	"github.com/alist-org/alist/v3/internal/archive/tool"
-	"github.com/alist-org/alist/v3/internal/conf"
-	"github.com/alist-org/alist/v3/internal/errs"
-	"github.com/alist-org/alist/v3/internal/fs"
-	"github.com/alist-org/alist/v3/internal/model"
-	"github.com/alist-org/alist/v3/internal/op"
-	"github.com/alist-org/alist/v3/internal/setting"
-	"github.com/alist-org/alist/v3/internal/sign"
-	"github.com/alist-org/alist/v3/pkg/utils"
-	"github.com/alist-org/alist/v3/server/common"
+	"github.com/OpenListTeam/OpenList/v4/internal/task"
+
+	"github.com/OpenListTeam/OpenList/v4/internal/archive/tool"
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/errs"
+	"github.com/OpenListTeam/OpenList/v4/internal/fs"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/OpenListTeam/OpenList/v4/internal/setting"
+	"github.com/OpenListTeam/OpenList/v4/internal/sign"
+	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -101,9 +101,8 @@ func FsArchiveMeta(c *gin.Context) {
 	}
 	archiveArgs := model.ArchiveArgs{
 		LinkArgs: model.LinkArgs{
-			Header:  c.Request.Header,
-			Type:    c.Query("type"),
-			HttpReq: c.Request,
+			Header: c.Request.Header,
+			Type:   c.Query("type"),
 		},
 		Password: req.ArchivePass,
 	}
@@ -132,7 +131,7 @@ func FsArchiveMeta(c *gin.Context) {
 		IsEncrypted: ret.IsEncrypted(),
 		Content:     toContentResp(ret.GetTree()),
 		Sort:        ret.Sort,
-		RawURL:      fmt.Sprintf("%s%s%s", common.GetApiUrl(c.Request), api, utils.EncodePath(reqPath, true)),
+		RawURL:      fmt.Sprintf("%s%s%s", common.GetApiUrl(c), api, utils.EncodePath(reqPath, true)),
 		Sign:        s,
 	})
 }
@@ -181,9 +180,8 @@ func FsArchiveList(c *gin.Context) {
 		ArchiveInnerArgs: model.ArchiveInnerArgs{
 			ArchiveArgs: model.ArchiveArgs{
 				LinkArgs: model.LinkArgs{
-					Header:  c.Request.Header,
-					Type:    c.Query("type"),
-					HttpReq: c.Request,
+					Header: c.Request.Header,
+					Type:   c.Query("type"),
 				},
 				Password: req.ArchivePass,
 			},
@@ -266,9 +264,8 @@ func FsArchiveDecompress(c *gin.Context) {
 			ArchiveInnerArgs: model.ArchiveInnerArgs{
 				ArchiveArgs: model.ArchiveArgs{
 					LinkArgs: model.LinkArgs{
-						Header:  c.Request.Header,
-						Type:    c.Query("type"),
-						HttpReq: c.Request,
+						Header: c.Request.Header,
+						Type:   c.Query("type"),
 					},
 					Password: req.ArchivePass,
 				},
@@ -314,7 +311,6 @@ func ArchiveDown(c *gin.Context) {
 					IP:       c.ClientIP(),
 					Header:   c.Request.Header,
 					Type:     c.Query("type"),
-					HttpReq:  c.Request,
 					Redirect: true,
 				},
 				Password: password,
@@ -344,9 +340,8 @@ func ArchiveProxy(c *gin.Context) {
 		link, file, err := fs.ArchiveDriverExtract(c, archiveRawPath, model.ArchiveInnerArgs{
 			ArchiveArgs: model.ArchiveArgs{
 				LinkArgs: model.LinkArgs{
-					Header:  c.Request.Header,
-					Type:    c.Query("type"),
-					HttpReq: c.Request,
+					Header: c.Request.Header,
+					Type:   c.Query("type"),
 				},
 				Password: password,
 			},
@@ -370,9 +365,8 @@ func ArchiveInternalExtract(c *gin.Context) {
 	rc, size, err := fs.ArchiveInternalExtract(c, archiveRawPath, model.ArchiveInnerArgs{
 		ArchiveArgs: model.ArchiveArgs{
 			LinkArgs: model.LinkArgs{
-				Header:  c.Request.Header,
-				Type:    c.Query("type"),
-				HttpReq: c.Request,
+				Header: c.Request.Header,
+				Type:   c.Query("type"),
 			},
 			Password: password,
 		},
@@ -391,11 +385,11 @@ func ArchiveInternalExtract(c *gin.Context) {
 		"Referrer-Policy": "no-referrer",
 		"Cache-Control":   "max-age=0, no-cache, no-store, must-revalidate",
 	}
-	filename := stdpath.Base(innerPath)
-	headers["Content-Disposition"] = fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, filename, url.PathEscape(filename))
+	fileName := stdpath.Base(innerPath)
+	headers["Content-Disposition"] = utils.GenerateContentDisposition(fileName)
 	contentType := c.Request.Header.Get("Content-Type")
 	if contentType == "" {
-		contentType = utils.GetMimeType(filename)
+		contentType = utils.GetMimeType(fileName)
 	}
 	c.DataFromReader(200, size, contentType, rc, headers)
 }

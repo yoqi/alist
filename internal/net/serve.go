@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alist-org/alist/v3/internal/conf"
-	"github.com/alist-org/alist/v3/internal/model"
-	"github.com/alist-org/alist/v3/pkg/http_range"
-	"github.com/alist-org/alist/v3/pkg/utils"
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
+	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
@@ -120,7 +120,7 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request, name string, modTime time
 		reader, err := RangeReadCloser.RangeRead(ctx, http_range.Range{Length: -1})
 		if err != nil {
 			code = http.StatusRequestedRangeNotSatisfiable
-			if err == ErrExceedMaxConcurrency {
+			if errors.Is(err, ErrExceedMaxConcurrency) {
 				code = http.StatusTooManyRequests
 			}
 			http.Error(w, err.Error(), code)
@@ -143,7 +143,7 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request, name string, modTime time
 		sendContent, err = RangeReadCloser.RangeRead(ctx, ra)
 		if err != nil {
 			code = http.StatusRequestedRangeNotSatisfiable
-			if err == ErrExceedMaxConcurrency {
+			if errors.Is(err, ErrExceedMaxConcurrency) {
 				code = http.StatusTooManyRequests
 			}
 			http.Error(w, err.Error(), code)
@@ -197,12 +197,15 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request, name string, modTime time
 	if r.Method != "HEAD" {
 		written, err := utils.CopyWithBufferN(w, sendContent, sendSize)
 		if err != nil {
+			if errors.Is(context.Cause(ctx), context.Canceled) {
+				return nil
+			}
 			log.Warnf("ServeHttp error. err: %s ", err)
 			if written != sendSize {
 				log.Warnf("Maybe size incorrect or reader not giving correct/full data, or connection closed before finish. written bytes: %d ,sendSize:%d, ", written, sendSize)
 			}
 			code = http.StatusInternalServerError
-			if err == ErrExceedMaxConcurrency {
+			if errors.Is(err, ErrExceedMaxConcurrency) {
 				code = http.StatusTooManyRequests
 			}
 			w.WriteHeader(code)
