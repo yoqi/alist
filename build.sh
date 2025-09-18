@@ -53,18 +53,18 @@ FetchWebRolling() {
 }
 
 FetchWebRelease() {
-  release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/OpenListTeam/OpenList-Frontend/releases/latest\"")
-  release_assets=$(echo "$release_json" | jq -r '.assets[].browser_download_url')
+  # release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/OpenListTeam/OpenList-Frontend/releases/latest\"")
+  # release_assets=$(echo "$release_json" | jq -r '.assets[].browser_download_url')
   
-  if [ "$useLite" = true ]; then
-    release_tar_url=$(echo "$release_assets" | grep "openlist-frontend-dist-lite" | grep "\.tar\.gz$")
-  else
-    release_tar_url=$(echo "$release_assets" | grep "openlist-frontend-dist" | grep -v "lite" | grep "\.tar\.gz$")
-  fi
+  # if [ "$useLite" = true ]; then
+  #   release_tar_url=$(echo "$release_assets" | grep "openlist-frontend-dist-lite" | grep "\.tar\.gz$")
+  # else
+  #   release_tar_url=$(echo "$release_assets" | grep "openlist-frontend-dist" | grep -v "lite" | grep "\.tar\.gz$")
+  # fi
   
-  curl -fsSL "$release_tar_url" -o dist.tar.gz
-  rm -rf public/dist && mkdir -p public/dist
-  tar -zxvf dist.tar.gz -C public/dist
+  # curl -fsSL "$release_tar_url" -o dist.tar.gz
+  # rm -rf public/dist && mkdir -p public/dist
+  # tar -zxvf dist.tar.gz -C public/dist
   rm -rf dist.tar.gz
 }
 
