@@ -30,7 +30,7 @@ func (d *SFTP) GetAddition() driver.Additional {
 }
 
 func (d *SFTP) Init(ctx context.Context) error {
-	return d.initClient()
+	return d._initClient()
 }
 
 func (d *SFTP) Drop(ctx context.Context) error {
@@ -63,12 +63,20 @@ func (d *SFTP) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*
 	if err != nil {
 		return nil, err
 	}
+	mFile := &stream.RateLimitFile{
+		File:    remoteFile,
+		Limiter: stream.ServerDownloadLimit,
+		Ctx:     ctx,
+	}
+	if !d.Config().OnlyLinkMFile {
+		return &model.Link{
+			RangeReader: stream.GetRangeReaderFromMFile(file.GetSize(), mFile),
+			SyncClosers: utils.NewSyncClosers(remoteFile),
+		}, nil
+	}
 	return &model.Link{
-		MFile: &stream.RateLimitFile{
-			File:    remoteFile,
-			Limiter: stream.ServerDownloadLimit,
-			Ctx:     ctx,
-		},
+		MFile:       mFile,
+		SyncClosers: utils.NewSyncClosers(remoteFile),
 	}, nil
 }
 

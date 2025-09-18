@@ -30,10 +30,10 @@ func (d *SMB) GetAddition() driver.Additional {
 }
 
 func (d *SMB) Init(ctx context.Context) error {
-	if strings.Index(d.Addition.Address, ":") < 0 {
+	if !strings.Contains(d.Addition.Address, ":") {
 		d.Addition.Address = d.Addition.Address + ":445"
 	}
-	return d.initFS()
+	return d._initFS()
 }
 
 func (d *SMB) Drop(ctx context.Context) error {
@@ -81,12 +81,20 @@ func (d *SMB) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*m
 		return nil, err
 	}
 	d.updateLastConnTime()
+	mFile := &stream.RateLimitFile{
+		File:    remoteFile,
+		Limiter: stream.ServerDownloadLimit,
+		Ctx:     ctx,
+	}
+	if !d.Config().OnlyLinkMFile {
+		return &model.Link{
+			RangeReader: stream.GetRangeReaderFromMFile(file.GetSize(), mFile),
+			SyncClosers: utils.NewSyncClosers(remoteFile),
+		}, nil
+	}
 	return &model.Link{
-		MFile: &stream.RateLimitFile{
-			File:    remoteFile,
-			Limiter: stream.ServerDownloadLimit,
-			Ctx:     ctx,
-		},
+		MFile:       mFile,
+		SyncClosers: utils.NewSyncClosers(remoteFile),
 	}, nil
 }
 

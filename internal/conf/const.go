@@ -17,7 +17,7 @@ const (
 	AllowMounted = "allow_mounted"
 	RobotsTxt    = "robots_txt"
 
-	Logo      = "logo"
+	Logo      = "logo" // multi-lines text, L1: light, EOL: dark
 	Favicon   = "favicon"
 	MainColor = "main_color"
 
@@ -33,6 +33,7 @@ const (
 	PreviewArchivesByDefault = "preview_archives_by_default"
 	ReadMeAutoRender         = "readme_autorender"
 	FilterReadMeScripts      = "filter_readme_scripts"
+
 	// global
 	HideFiles               = "hide_files"
 	CustomizeHead           = "customize_head"
@@ -45,6 +46,10 @@ const (
 	ForwardDirectLinkParams = "forward_direct_link_params"
 	IgnoreDirectLinkParams  = "ignore_direct_link_params"
 	WebauthnLoginEnabled    = "webauthn_login_enabled"
+	SharePreview            = "share_preview"
+	ShareArchivePreview     = "share_archive_preview"
+	ShareForceProxy         = "share_force_proxy"
+	ShareSummaryContent     = "share_summary_content"
 
 	// index
 	SearchIndex     = "search_index"
@@ -63,11 +68,17 @@ const (
 	// 115
 	Pan115TempDir = "115_temp_dir"
 
+	// 115_open
+	Pan115OpenTempDir = "115_open_temp_dir"
+
 	// pikpak
 	PikPakTempDir = "pikpak_temp_dir"
 
 	// thunder
 	ThunderTempDir = "thunder_temp_dir"
+
+	// thunderx
+	ThunderXTempDir = "thunderx_temp_dir"
 
 	// thunder_browser
 	ThunderBrowserTempDir = "thunder_browser_temp_dir"
@@ -146,7 +157,20 @@ const (
 )
 
 // ContextKey is the type of context keys.
+type ContextKey int
+
 const (
-	NoTaskKey = "no_task"
-	ApiUrlKey = "api_url"
+	_ ContextKey = iota
+
+	NoTaskKey
+	ApiUrlKey
+	UserKey
+	MetaKey
+	MetaPassKey
+	ClientIPKey
+	ProxyHeaderKey
+	RequestHeaderKey
+	UserAgentKey
+	PathKey
+	SharingIDKey
 )

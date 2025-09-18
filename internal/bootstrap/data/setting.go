@@ -1,6 +1,8 @@
 package data
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
@@ -15,10 +17,16 @@ import (
 	"gorm.io/gorm"
 )
 
-var initialSettingItems []model.SettingItem
-
 func initSettings() {
-	InitialSettings()
+	initialSettingItems := InitialSettings()
+	isActive := func(key string) bool {
+		for _, item := range initialSettingItems {
+			if item.Key == key {
+				return true
+			}
+		}
+		return false
+	}
 	// check deprecated
 	settings, err := op.GetSettingItems()
 	if err != nil {
@@ -35,13 +43,16 @@ func initSettings() {
 		}
 		settingMap[v.Key] = &v
 	}
+	op.MigrationSettingItems = map[string]op.MigrationValueItem{}
 	// create or save setting
-	save := false
+	var saveItems []model.SettingItem
 	for i := range initialSettingItems {
 		item := &initialSettingItems[i]
 		item.Index = uint(i)
-		if len(item.MigrationValue) == 0 {
-			item.MigrationValue = item.Value
+		migrationValue := item.MigrationValue
+		if len(migrationValue) > 0 {
+			op.MigrationSettingItems[item.Key] = op.MigrationValueItem{MigrationValue: item.MigrationValue, Value: item.Value}
+			item.MigrationValue = ""
 		}
 		// err
 		stored, ok := settingMap[item.Key]
@@ -52,7 +63,8 @@ func initSettings() {
 				continue
 			}
 		}
-		if stored != nil && item.Key != conf.VERSION && stored.Value != item.MigrationValue {
+		if item.Key != conf.VERSION && stored != nil &&
+			(len(migrationValue) == 0 || stored.Value != migrationValue) {
 			item.Value = stored.Value
 		}
 		_, err = op.HandleSettingItemHook(item)
@@ -60,28 +72,18 @@ func initSettings() {
 			utils.Log.Errorf("failed to execute hook on %s: %+v", item.Key, err)
 			continue
 		}
-		// save
 		if stored == nil || *item != *stored {
-			save = true
+			saveItems = append(saveItems, *item)
 		}
 	}
-	if save {
-		err = db.SaveSettingItems(initialSettingItems)
+	if len(saveItems) > 0 {
+		err = db.SaveSettingItems(saveItems)
 		if err != nil {
 			utils.Log.Fatalf("failed save setting: %+v", err)
 		} else {
 			op.SettingCacheUpdate()
 		}
 	}
-}
-
-func isActive(key string) bool {
-	for _, item := range initialSettingItems {
-		if item.Key == key {
-			return true
-		}
-	}
-	return false
 }
 
 func InitialSettings() []model.SettingItem {
@@ -91,9 +93,10 @@ func InitialSettings() []model.SettingItem {
 	} else {
 		token = random.Token()
 	}
-	initialSettingItems = []model.SettingItem{
+	siteVersion := fmt.Sprintf("%s (Commit: %s) - Frontend: %s - Build at: %s", conf.Version, conf.GitCommit, conf.WebVersion, conf.BuiltAt)
+	initialSettingItems := []model.SettingItem{
 		// site settings
-		{Key: conf.VERSION, Value: conf.Version, Type: conf.TypeString, Group: model.SITE, Flag: model.READONLY},
+		{Key: conf.VERSION, Value: siteVersion, Type: conf.TypeString, Group: model.SITE, Flag: model.READONLY},
 		//{Key: conf.ApiUrl, Value: "", Type: conf.TypeString, Group: model.SITE},
 		//{Key: conf.BasePath, Value: "", Type: conf.TypeString, Group: model.SITE},
 		{Key: conf.SiteTitle, Value: "OpenList", Type: conf.TypeString, Group: model.SITE},
@@ -104,10 +107,11 @@ func InitialSettings() []model.SettingItem {
 		{Key: conf.AllowMounted, Value: "true", Type: conf.TypeBool, Group: model.SITE},
 		{Key: conf.RobotsTxt, Value: "User-agent: *\nAllow: /", Type: conf.TypeText, Group: model.SITE},
 		// style settings
-		{Key: conf.Logo, Value: "https://cdn.oplist.org/gh/OpenListTeam/Logo@main/logo.svg", Type: conf.TypeText, Group: model.STYLE},
-		{Key: conf.Favicon, Value: "https://cdn.oplist.org/gh/OpenListTeam/Logo@main/logo.svg", Type: conf.TypeString, Group: model.STYLE},
+		{Key: conf.Logo, Value: "https://res.oplist.org/logo/logo.svg", MigrationValue: "https://cdn.oplist.org/gh/OpenListTeam/Logo@main/logo.svg", Type: conf.TypeText, Group: model.STYLE},
+		{Key: conf.Favicon, Value: "https://res.oplist.org/logo/logo.svg", MigrationValue: "https://cdn.oplist.org/gh/OpenListTeam/Logo@main/logo.svg", Type: conf.TypeString, Group: model.STYLE},
 		{Key: conf.MainColor, Value: "#1890ff", Type: conf.TypeString, Group: model.STYLE},
 		{Key: "home_icon", Value: "🏠", Type: conf.TypeString, Group: model.STYLE},
+		{Key: "share_icon", Value: "🎁", Type: conf.TypeString, Group: model.STYLE},
 		{Key: "home_container", Value: "max_980px", Type: conf.TypeSelect, Options: "max_980px,hope_container", Group: model.STYLE},
 		{Key: "settings_layout", Value: "list", Type: conf.TypeSelect, Options: "list,responsive", Group: model.STYLE},
 		// preview settings
@@ -138,7 +142,7 @@ func InitialSettings() []model.SettingItem {
 		//		{Key: conf.PdfViewers, Value: `{
 		//	"pdf.js":"https://openlistteam.github.io/pdf.js/web/viewer.html?file=$url"
 		//}`, Type: conf.TypeText, Group: model.PREVIEW},
-		{Key: "audio_cover", Value: "https://cdn.oplist.org/gh/OpenListTeam/Logo@main/logo.svg", Type: conf.TypeString, Group: model.PREVIEW},
+		{Key: "audio_cover", Value: "https://res.oplist.org/logo/logo.svg", MigrationValue: "https://cdn.oplist.org/gh/OpenListTeam/Logo@main/logo.svg", Type: conf.TypeString, Group: model.PREVIEW},
 		{Key: conf.AudioAutoplay, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW},
 		{Key: conf.VideoAutoplay, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW},
 		{Key: conf.PreviewArchivesByDefault, Value: "true", Type: conf.TypeBool, Group: model.PREVIEW},
@@ -158,8 +162,12 @@ func InitialSettings() []model.SettingItem {
 		{Key: conf.OcrApi, Value: "https://openlistteam-ocr-api-server.hf.space/ocr/file/json", MigrationValue: "https://api.example.com/ocr/file/json", Type: conf.TypeString, Group: model.GLOBAL}, // TODO: This can be replace by a community-hosted endpoint, see https://github.com/OpenListTeam/ocr_api_server
 		{Key: conf.FilenameCharMapping, Value: `{"/": "|"}`, Type: conf.TypeText, Group: model.GLOBAL},
 		{Key: conf.ForwardDirectLinkParams, Value: "false", Type: conf.TypeBool, Group: model.GLOBAL},
-		{Key: conf.IgnoreDirectLinkParams, Value: "sign,openlist_ts", Type: conf.TypeString, Group: model.GLOBAL},
+		{Key: conf.IgnoreDirectLinkParams, Value: "sign,openlist_ts,raw", Type: conf.TypeString, Group: model.GLOBAL},
 		{Key: conf.WebauthnLoginEnabled, Value: "false", Type: conf.TypeBool, Group: model.GLOBAL, Flag: model.PUBLIC},
+		{Key: conf.SharePreview, Value: "false", Type: conf.TypeBool, Group: model.GLOBAL, Flag: model.PUBLIC},
+		{Key: conf.ShareArchivePreview, Value: "false", Type: conf.TypeBool, Group: model.GLOBAL, Flag: model.PUBLIC},
+		{Key: conf.ShareForceProxy, Value: "true", Type: conf.TypeBool, Group: model.GLOBAL, Flag: model.PRIVATE},
+		{Key: conf.ShareSummaryContent, Value: "@{{creator}} shared {{#each files}}{{#if @first}}\"{{filename this}}\"{{/if}}{{#if @last}}{{#unless (eq @index 0)}} and {{@index}} more files{{/unless}}{{/if}}{{/each}} from {{site_title}}: {{base_url}}/@s/{{id}}{{#if pwd}} , the share code is {{pwd}}{{/if}}{{#if expires}}, please access before {{dateLocaleString expires}}.{{/if}}", Type: conf.TypeText, Group: model.GLOBAL, Flag: model.PUBLIC},
 
 		// single settings
 		{Key: conf.Token, Value: token, Type: conf.TypeString, Group: model.SINGLE, Flag: model.PRIVATE},
@@ -223,7 +231,12 @@ func InitialSettings() []model.SettingItem {
 		{Key: conf.StreamMaxServerDownloadSpeed, Value: "-1", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PRIVATE},
 		{Key: conf.StreamMaxServerUploadSpeed, Value: "-1", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PRIVATE},
 	}
-	initialSettingItems = append(initialSettingItems, tool.Tools.Items()...)
+	additionalSettingItems := tool.Tools.Items()
+	// 固定顺序
+	sort.Slice(additionalSettingItems, func(i, j int) bool {
+		return additionalSettingItems[i].Key < additionalSettingItems[j].Key
+	})
+	initialSettingItems = append(initialSettingItems, additionalSettingItems...)
 	if flags.Dev {
 		initialSettingItems = append(initialSettingItems, []model.SettingItem{
 			{Key: "test_deprecated", Value: "test_value", Type: conf.TypeString, Flag: model.DEPRECATED},

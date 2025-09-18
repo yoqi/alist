@@ -10,7 +10,7 @@ import (
 var (
 	NotImplement = errors.New("not implement")
 	NotSupport   = errors.New("not support")
-	RelativePath = errors.New("access using relative path is not allowed")
+	RelativePath = errors.New("using relative path is not allowed")
 
 	MoveBetweenTwoStorages = errors.New("can't move files between two storages, try to copy")
 	UploadNotSupported     = errors.New("upload not supported")
@@ -23,6 +23,10 @@ var (
 	UnknownArchiveFormat      = errors.New("unknown archive format")
 	WrongArchivePassword      = errors.New("wrong archive password")
 	DriverExtractNotSupported = errors.New("driver extraction not supported")
+
+	WrongShareCode  = errors.New("wrong share code")
+	InvalidSharing  = errors.New("invalid sharing")
+	SharingNotFound = errors.New("sharing not found")
 )
 
 // NewErr wrap constant error with an extra message

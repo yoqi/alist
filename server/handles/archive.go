@@ -3,9 +3,9 @@ package handles
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	stdpath "path"
-
-	"github.com/OpenListTeam/OpenList/v4/internal/task"
+	"strings"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/archive/tool"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
@@ -15,6 +15,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/internal/setting"
 	"github.com/OpenListTeam/OpenList/v4/internal/sign"
+	"github.com/OpenListTeam/OpenList/v4/internal/task"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
@@ -71,13 +72,26 @@ func toContentResp(objs []model.ObjTree) []ArchiveContentResp {
 	return ret
 }
 
-func FsArchiveMeta(c *gin.Context) {
+func FsArchiveMetaSplit(c *gin.Context) {
 	var req ArchiveMetaReq
 	if err := c.ShouldBind(&req); err != nil {
 		common.ErrorResp(c, err, 400)
 		return
 	}
-	user := c.MustGet("user").(*model.User)
+	if strings.HasPrefix(req.Path, "/@s") {
+		req.Path = strings.TrimPrefix(req.Path, "/@s")
+		SharingArchiveMeta(c, &req)
+		return
+	}
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	if user.IsGuest() && user.Disabled {
+		common.ErrorStrResp(c, "Guest user is disabled, login please", 401)
+		return
+	}
+	FsArchiveMeta(c, &req, user)
+}
+
+func FsArchiveMeta(c *gin.Context, req *ArchiveMetaReq, user *model.User) {
 	if !user.CanReadArchives() {
 		common.ErrorResp(c, errs.PermissionDenied, 403)
 		return
@@ -94,7 +108,7 @@ func FsArchiveMeta(c *gin.Context) {
 			return
 		}
 	}
-	c.Set("meta", meta)
+	common.GinWithValue(c, conf.MetaKey, meta)
 	if !common.CanAccess(user, meta, reqPath, req.Password) {
 		common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
 		return
@@ -106,7 +120,7 @@ func FsArchiveMeta(c *gin.Context) {
 		},
 		Password: req.ArchivePass,
 	}
-	ret, err := fs.ArchiveMeta(c, reqPath, model.ArchiveMetaArgs{
+	ret, err := fs.ArchiveMeta(c.Request.Context(), reqPath, model.ArchiveMetaArgs{
 		ArchiveArgs: archiveArgs,
 		Refresh:     req.Refresh,
 	})
@@ -142,19 +156,27 @@ type ArchiveListReq struct {
 	InnerPath string `json:"inner_path" form:"inner_path"`
 }
 
-type ArchiveListResp struct {
-	Content []ObjResp `json:"content"`
-	Total   int64     `json:"total"`
-}
-
-func FsArchiveList(c *gin.Context) {
+func FsArchiveListSplit(c *gin.Context) {
 	var req ArchiveListReq
 	if err := c.ShouldBind(&req); err != nil {
 		common.ErrorResp(c, err, 400)
 		return
 	}
 	req.Validate()
-	user := c.MustGet("user").(*model.User)
+	if strings.HasPrefix(req.Path, "/@s") {
+		req.Path = strings.TrimPrefix(req.Path, "/@s")
+		SharingArchiveList(c, &req)
+		return
+	}
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	if user.IsGuest() && user.Disabled {
+		common.ErrorStrResp(c, "Guest user is disabled, login please", 401)
+		return
+	}
+	FsArchiveList(c, &req, user)
+}
+
+func FsArchiveList(c *gin.Context, req *ArchiveListReq, user *model.User) {
 	if !user.CanReadArchives() {
 		common.ErrorResp(c, errs.PermissionDenied, 403)
 		return
@@ -171,12 +193,12 @@ func FsArchiveList(c *gin.Context) {
 			return
 		}
 	}
-	c.Set("meta", meta)
+	common.GinWithValue(c, conf.MetaKey, meta)
 	if !common.CanAccess(user, meta, reqPath, req.Password) {
 		common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
 		return
 	}
-	objs, err := fs.ArchiveList(c, reqPath, model.ArchiveListArgs{
+	objs, err := fs.ArchiveList(c.Request.Context(), reqPath, model.ArchiveListArgs{
 		ArchiveInnerArgs: model.ArchiveInnerArgs{
 			ArchiveArgs: model.ArchiveArgs{
 				LinkArgs: model.LinkArgs{
@@ -201,7 +223,7 @@ func FsArchiveList(c *gin.Context) {
 	ret, _ := utils.SliceConvert(objs, func(src model.Obj) (ObjResp, error) {
 		return toObjsRespWithoutSignAndThumb(src), nil
 	})
-	common.SuccessResp(c, ArchiveListResp{
+	common.SuccessResp(c, common.PageResp{
 		Content: ret,
 		Total:   int64(total),
 	})
@@ -239,7 +261,7 @@ func FsArchiveDecompress(c *gin.Context) {
 		common.ErrorResp(c, err, 400)
 		return
 	}
-	user := c.MustGet("user").(*model.User)
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
 	if !user.CanDecompress() {
 		common.ErrorResp(c, errs.PermissionDenied, 403)
 		return
@@ -260,7 +282,7 @@ func FsArchiveDecompress(c *gin.Context) {
 	}
 	tasks := make([]task.TaskExtensionInfo, 0, len(srcPaths))
 	for _, srcPath := range srcPaths {
-		t, e := fs.ArchiveDecompress(c, srcPath, dstDir, model.ArchiveDecompressArgs{
+		t, e := fs.ArchiveDecompress(c.Request.Context(), srcPath, dstDir, model.ArchiveDecompressArgs{
 			ArchiveInnerArgs: model.ArchiveInnerArgs{
 				ArchiveArgs: model.ArchiveArgs{
 					LinkArgs: model.LinkArgs{
@@ -292,20 +314,20 @@ func FsArchiveDecompress(c *gin.Context) {
 }
 
 func ArchiveDown(c *gin.Context) {
-	archiveRawPath := c.MustGet("path").(string)
+	archiveRawPath := c.Request.Context().Value(conf.PathKey).(string)
 	innerPath := utils.FixAndCleanPath(c.Query("inner"))
 	password := c.Query("pass")
 	filename := stdpath.Base(innerPath)
 	storage, err := fs.GetStorage(archiveRawPath, &fs.GetStoragesArgs{})
 	if err != nil {
-		common.ErrorResp(c, err, 500)
+		common.ErrorPage(c, err, 500)
 		return
 	}
 	if common.ShouldProxy(storage, filename) {
 		ArchiveProxy(c)
 		return
 	} else {
-		link, _, err := fs.ArchiveDriverExtract(c, archiveRawPath, model.ArchiveInnerArgs{
+		link, _, err := fs.ArchiveDriverExtract(c.Request.Context(), archiveRawPath, model.ArchiveInnerArgs{
 			ArchiveArgs: model.ArchiveArgs{
 				LinkArgs: model.LinkArgs{
 					IP:       c.ClientIP(),
@@ -318,26 +340,26 @@ func ArchiveDown(c *gin.Context) {
 			InnerPath: innerPath,
 		})
 		if err != nil {
-			common.ErrorResp(c, err, 500)
+			common.ErrorPage(c, err, 500)
 			return
 		}
-		down(c, link)
+		redirect(c, link)
 	}
 }
 
 func ArchiveProxy(c *gin.Context) {
-	archiveRawPath := c.MustGet("path").(string)
+	archiveRawPath := c.Request.Context().Value(conf.PathKey).(string)
 	innerPath := utils.FixAndCleanPath(c.Query("inner"))
 	password := c.Query("pass")
 	filename := stdpath.Base(innerPath)
 	storage, err := fs.GetStorage(archiveRawPath, &fs.GetStoragesArgs{})
 	if err != nil {
-		common.ErrorResp(c, err, 500)
+		common.ErrorPage(c, err, 500)
 		return
 	}
 	if canProxy(storage, filename) {
 		// TODO: Support external download proxy URL
-		link, file, err := fs.ArchiveDriverExtract(c, archiveRawPath, model.ArchiveInnerArgs{
+		link, file, err := fs.ArchiveDriverExtract(c.Request.Context(), archiveRawPath, model.ArchiveInnerArgs{
 			ArchiveArgs: model.ArchiveArgs{
 				LinkArgs: model.LinkArgs{
 					Header: c.Request.Header,
@@ -348,21 +370,39 @@ func ArchiveProxy(c *gin.Context) {
 			InnerPath: innerPath,
 		})
 		if err != nil {
-			common.ErrorResp(c, err, 500)
+			common.ErrorPage(c, err, 500)
 			return
 		}
-		localProxy(c, link, file, storage.GetStorage().ProxyRange)
+		proxy(c, link, file, storage.GetStorage().ProxyRange)
 	} else {
-		common.ErrorStrResp(c, "proxy not allowed", 403)
+		common.ErrorPage(c, errors.New("proxy not allowed"), 403)
 		return
 	}
 }
 
+func proxyInternalExtract(c *gin.Context, rc io.ReadCloser, size int64, fileName string) {
+	defer func() {
+		if err := rc.Close(); err != nil {
+			log.Errorf("failed to close file streamer, %v", err)
+		}
+	}()
+	headers := map[string]string{
+		"Referrer-Policy": "no-referrer",
+		"Cache-Control":   "max-age=0, no-cache, no-store, must-revalidate",
+	}
+	headers["Content-Disposition"] = utils.GenerateContentDisposition(fileName)
+	contentType := c.Request.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = utils.GetMimeType(fileName)
+	}
+	c.DataFromReader(200, size, contentType, rc, headers)
+}
+
 func ArchiveInternalExtract(c *gin.Context) {
-	archiveRawPath := c.MustGet("path").(string)
+	archiveRawPath := c.Request.Context().Value(conf.PathKey).(string)
 	innerPath := utils.FixAndCleanPath(c.Query("inner"))
 	password := c.Query("pass")
-	rc, size, err := fs.ArchiveInternalExtract(c, archiveRawPath, model.ArchiveInnerArgs{
+	rc, size, err := fs.ArchiveInternalExtract(c.Request.Context(), archiveRawPath, model.ArchiveInnerArgs{
 		ArchiveArgs: model.ArchiveArgs{
 			LinkArgs: model.LinkArgs{
 				Header: c.Request.Header,
@@ -373,25 +413,11 @@ func ArchiveInternalExtract(c *gin.Context) {
 		InnerPath: innerPath,
 	})
 	if err != nil {
-		common.ErrorResp(c, err, 500)
+		common.ErrorPage(c, err, 500)
 		return
 	}
-	defer func() {
-		if err := rc.Close(); err != nil {
-			log.Errorf("failed to close file streamer, %v", err)
-		}
-	}()
-	headers := map[string]string{
-		"Referrer-Policy": "no-referrer",
-		"Cache-Control":   "max-age=0, no-cache, no-store, must-revalidate",
-	}
 	fileName := stdpath.Base(innerPath)
-	headers["Content-Disposition"] = utils.GenerateContentDisposition(fileName)
-	contentType := c.Request.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = utils.GetMimeType(fileName)
-	}
-	c.DataFromReader(200, size, contentType, rc, headers)
+	proxyInternalExtract(c, rc, size, fileName)
 }
 
 func ArchiveExtensions(c *gin.Context) {

@@ -30,16 +30,9 @@ func init() {
 		return &ILanZou{
 			config: driver.Config{
 				Name:              "ILanZou",
-				LocalSort:         false,
-				OnlyLocal:         false,
-				OnlyProxy:         false,
-				NoCache:           false,
-				NoUpload:          false,
-				NeedMs:            false,
 				DefaultRoot:       "0",
-				CheckStatus:       false,
-				Alert:             "",
-				NoOverwriteUpload: false,
+				LocalSort:         true,
+				NoOverwriteUpload: true,
 			},
 			conf: Conf{
 				base:       "https://api.ilanzou.com",
@@ -56,16 +49,9 @@ func init() {
 		return &ILanZou{
 			config: driver.Config{
 				Name:              "FeijiPan",
-				LocalSort:         false,
-				OnlyLocal:         false,
-				OnlyProxy:         false,
-				NoCache:           false,
-				NoUpload:          false,
-				NeedMs:            false,
 				DefaultRoot:       "0",
-				CheckStatus:       false,
-				Alert:             "",
-				NoOverwriteUpload: false,
+				LocalSort:         true,
+				NoOverwriteUpload: true,
 			},
 			conf: Conf{
 				base:       "https://api.feijipan.com",

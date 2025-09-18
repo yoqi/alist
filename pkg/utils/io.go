@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -153,46 +155,103 @@ func Retry(attempts int, sleep time.Duration, f func() error) (err error) {
 type ClosersIF interface {
 	io.Closer
 	Add(closer io.Closer)
-	TryAdd(reader io.Reader)
-	AddClosers(closers Closers)
-	GetClosers() Closers
+	AddIfCloser(a any)
 }
+type Closers []io.Closer
 
-type Closers struct {
-	closers []io.Closer
+func (c *Closers) Close() error {
+	var errs []error
+	for _, closer := range *c {
+		if closer != nil {
+			errs = append(errs, closer.Close())
+		}
+	}
+	clear(*c)
+	*c = (*c)[:0]
+	return errors.Join(errs...)
 }
-
-func (c *Closers) GetClosers() Closers {
-	return *c
+func (c *Closers) Add(closer io.Closer) {
+	if closer != nil {
+		*c = append(*c, closer)
+	}
+}
+func (c *Closers) AddIfCloser(a any) {
+	if closer, ok := a.(io.Closer); ok {
+		*c = append(*c, closer)
+	}
 }
 
 var _ ClosersIF = (*Closers)(nil)
 
-func (c *Closers) Close() error {
+func NewClosers(c ...io.Closer) Closers {
+	return Closers(c)
+}
+
+type SyncClosersIF interface {
+	ClosersIF
+	AcquireReference() bool
+}
+
+type SyncClosers struct {
+	closers []io.Closer
+	ref     int32
+}
+
+var _ SyncClosersIF = (*SyncClosers)(nil)
+
+func (c *SyncClosers) AcquireReference() bool {
+	ref := atomic.AddInt32(&c.ref, 1)
+	if ref > 0 {
+		// log.Debugf("SyncClosers.AcquireReference %p,ref=%d\n", c, ref)
+		return true
+	}
+	atomic.StoreInt32(&c.ref, math.MinInt16)
+	return false
+}
+
+func (c *SyncClosers) Close() error {
+	ref := atomic.AddInt32(&c.ref, -1)
+	if ref < -1 {
+		atomic.StoreInt32(&c.ref, math.MinInt16)
+		return nil
+	}
+	// log.Debugf("SyncClosers.Close %p,ref=%d\n", c, ref+1)
+	if ref > 0 {
+		return nil
+	}
+	atomic.StoreInt32(&c.ref, math.MinInt16)
+
 	var errs []error
 	for _, closer := range c.closers {
 		if closer != nil {
 			errs = append(errs, closer.Close())
 		}
 	}
+	clear(c.closers)
+	c.closers = nil
 	return errors.Join(errs...)
 }
-func (c *Closers) Add(closer io.Closer) {
+
+func (c *SyncClosers) Add(closer io.Closer) {
 	if closer != nil {
-		c.closers = append(c.closers, closer)
-	}
-}
-func (c *Closers) AddClosers(closers Closers) {
-	c.closers = append(c.closers, closers.closers...)
-}
-func (c *Closers) TryAdd(reader io.Reader) {
-	if closer, ok := reader.(io.Closer); ok {
+		if atomic.LoadInt32(&c.ref) < 0 {
+			panic("Not reusable")
+		}
 		c.closers = append(c.closers, closer)
 	}
 }
 
-func NewClosers(c ...io.Closer) Closers {
-	return Closers{c}
+func (c *SyncClosers) AddIfCloser(a any) {
+	if closer, ok := a.(io.Closer); ok {
+		if atomic.LoadInt32(&c.ref) < 0 {
+			panic("Not reusable")
+		}
+		c.closers = append(c.closers, closer)
+	}
+}
+
+func NewSyncClosers(c ...io.Closer) SyncClosers {
+	return SyncClosers{closers: c}
 }
 
 type Ordered interface {
@@ -225,11 +284,7 @@ var IoBuffPool = &sync.Pool{
 func CopyWithBuffer(dst io.Writer, src io.Reader) (written int64, err error) {
 	buff := IoBuffPool.Get().([]byte)
 	defer IoBuffPool.Put(buff)
-	written, err = io.CopyBuffer(dst, src, buff)
-	if err != nil {
-		return
-	}
-	return written, nil
+	return io.CopyBuffer(dst, src, buff)
 }
 
 func CopyWithBufferN(dst io.Writer, src io.Reader, n int64) (written int64, err error) {

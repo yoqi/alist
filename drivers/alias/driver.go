@@ -3,7 +3,9 @@ package alias
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"net/url"
 	stdpath "path"
 	"strings"
 
@@ -11,8 +13,11 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/fs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/OpenListTeam/OpenList/v4/internal/sign"
 	"github.com/OpenListTeam/OpenList/v4/internal/stream"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	"github.com/OpenListTeam/OpenList/v4/server/common"
 )
 
 type Alias struct {
@@ -74,13 +79,45 @@ func (d *Alias) Get(ctx context.Context, path string) (model.Obj, error) {
 	if !ok {
 		return nil, errs.ObjectNotFound
 	}
+	var ret *model.Object
+	provider := ""
 	for _, dst := range dsts {
-		obj, err := d.get(ctx, path, dst, sub)
-		if err == nil {
-			return obj, nil
+		rawPath := stdpath.Join(dst, sub)
+		obj, err := fs.Get(ctx, rawPath, &fs.GetArgs{NoLog: true})
+		if err != nil {
+			continue
+		}
+		storage, err := fs.GetStorage(rawPath, &fs.GetStoragesArgs{})
+		if ret == nil {
+			ret = &model.Object{
+				Path:     path,
+				Name:     obj.GetName(),
+				Size:     obj.GetSize(),
+				Modified: obj.ModTime(),
+				IsFolder: obj.IsDir(),
+				HashInfo: obj.GetHash(),
+			}
+			if !d.ProviderPassThrough || err != nil {
+				break
+			}
+			provider = storage.Config().Name
+		} else if err != nil || provider != storage.GetStorage().Driver {
+			provider = ""
+			break
 		}
 	}
-	return nil, errs.ObjectNotFound
+	if ret == nil {
+		return nil, errs.ObjectNotFound
+	}
+	if provider != "" {
+		return &model.ObjectProvider{
+			Object: *ret,
+			Provider: model.Provider{
+				Provider: provider,
+			},
+		}, nil
+	}
+	return ret, nil
 }
 
 func (d *Alias) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
@@ -96,7 +133,27 @@ func (d *Alias) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([
 	var objs []model.Obj
 	fsArgs := &fs.ListArgs{NoLog: true, Refresh: args.Refresh}
 	for _, dst := range dsts {
-		tmp, err := d.list(ctx, dst, sub, fsArgs)
+		tmp, err := fs.List(ctx, stdpath.Join(dst, sub), fsArgs)
+		if err == nil {
+			tmp, err = utils.SliceConvert(tmp, func(obj model.Obj) (model.Obj, error) {
+				thumb, ok := model.GetThumb(obj)
+				objRes := model.Object{
+					Name:     obj.GetName(),
+					Size:     obj.GetSize(),
+					Modified: obj.ModTime(),
+					IsFolder: obj.IsDir(),
+				}
+				if !ok {
+					return &objRes, nil
+				}
+				return &model.ObjThumb{
+					Object: objRes,
+					Thumbnail: model.Thumbnail{
+						Thumbnail: thumb,
+					},
+				}, nil
+			})
+		}
 		if err == nil {
 			objs = append(objs, tmp...)
 		}
@@ -110,24 +167,76 @@ func (d *Alias) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (
 	if !ok {
 		return nil, errs.ObjectNotFound
 	}
+	// proxy || ftp,s3
+	if common.GetApiUrl(ctx) == "" {
+		args.Redirect = false
+	}
 	for _, dst := range dsts {
-		link, err := d.link(ctx, dst, sub, args)
-		if err == nil {
-			link.Expiration = nil // 去除非必要缓存，d.link里op.Lin有缓存
-			if !args.Redirect && len(link.URL) > 0 {
-				// 正常情况下 多并发 仅支持返回URL的驱动
-				// alias套娃alias 可以让crypt、mega等驱动(不返回URL的) 支持并发
-				if d.DownloadConcurrency > 0 {
-					link.Concurrency = d.DownloadConcurrency
-				}
-				if d.DownloadPartSize > 0 {
-					link.PartSize = d.DownloadPartSize * utils.KB
-				}
-			}
-			return link, nil
+		reqPath := stdpath.Join(dst, sub)
+		link, fi, err := d.link(ctx, reqPath, args)
+		if err != nil {
+			continue
 		}
+		if link == nil {
+			// 重定向且需要通过代理
+			return &model.Link{
+				URL: fmt.Sprintf("%s/p%s?sign=%s",
+					common.GetApiUrl(ctx),
+					utils.EncodePath(reqPath, true),
+					sign.Sign(reqPath)),
+			}, nil
+		}
+
+		resultLink := *link
+		resultLink.SyncClosers = utils.NewSyncClosers(link)
+		if args.Redirect {
+			return &resultLink, nil
+		}
+
+		if resultLink.ContentLength == 0 {
+			resultLink.ContentLength = fi.GetSize()
+		}
+		if resultLink.MFile != nil {
+			return &resultLink, nil
+		}
+		if d.DownloadConcurrency > 0 {
+			resultLink.Concurrency = d.DownloadConcurrency
+		}
+		if d.DownloadPartSize > 0 {
+			resultLink.PartSize = d.DownloadPartSize * utils.KB
+		}
+		return &resultLink, nil
 	}
 	return nil, errs.ObjectNotFound
+}
+
+func (d *Alias) Other(ctx context.Context, args model.OtherArgs) (interface{}, error) {
+	root, sub := d.getRootAndPath(args.Obj.GetPath())
+	dsts, ok := d.pathMap[root]
+	if !ok {
+		return nil, errs.ObjectNotFound
+	}
+	for _, dst := range dsts {
+		rawPath := stdpath.Join(dst, sub)
+		storage, actualPath, err := op.GetStorageAndActualPath(rawPath)
+		if err != nil {
+			continue
+		}
+		other, ok := storage.(driver.Other)
+		if !ok {
+			continue
+		}
+		obj, err := op.GetUnwrap(ctx, storage, actualPath)
+		if err != nil {
+			continue
+		}
+		return other.Other(ctx, model.OtherArgs{
+			Obj:    obj,
+			Method: args.Method,
+			Data:   args.Data,
+		})
+	}
+	return nil, errs.NotImplement
 }
 
 func (d *Alias) MakeDir(ctx context.Context, parentDir model.Obj, dirName string) error {
@@ -167,7 +276,8 @@ func (d *Alias) Move(ctx context.Context, srcObj, dstDir model.Obj) error {
 	}
 	if len(srcPath) == len(dstPath) {
 		for i := range srcPath {
-			err = errors.Join(err, fs.Move(ctx, *srcPath[i], *dstPath[i]))
+			_, e := fs.Move(ctx, *srcPath[i], *dstPath[i])
+			err = errors.Join(err, e)
 		}
 		return err
 	} else {
@@ -251,20 +361,29 @@ func (d *Alias) Put(ctx context.Context, dstDir model.Obj, s model.FileStreamer,
 	reqPath, err := d.getReqPath(ctx, dstDir, true)
 	if err == nil {
 		if len(reqPath) == 1 {
-			return fs.PutDirectly(ctx, *reqPath[0], s)
-		} else {
-			defer s.Close()
-			file, err := s.CacheFullInTempFile()
+			storage, reqActualPath, err := op.GetStorageAndActualPath(*reqPath[0])
 			if err != nil {
 				return err
 			}
-			for _, path := range reqPath {
+			return op.Put(ctx, storage, reqActualPath, &stream.FileStream{
+				Obj:      s,
+				Mimetype: s.GetMimetype(),
+				Reader:   s,
+			}, up)
+		} else {
+			file, err := s.CacheFullAndWriter(nil, nil)
+			if err != nil {
+				return err
+			}
+			count := float64(len(reqPath) + 1)
+			up(100 / count)
+			for i, path := range reqPath {
 				err = errors.Join(err, fs.PutDirectly(ctx, *path, &stream.FileStream{
-					Obj:          s,
-					Mimetype:     s.GetMimetype(),
-					WebPutAsTask: s.NeedStore(),
-					Reader:       file,
+					Obj:      s,
+					Mimetype: s.GetMimetype(),
+					Reader:   file,
 				}))
+				up(float64(i+2) / float64(count) * 100)
 				_, e := file.Seek(0, io.SeekStart)
 				if e != nil {
 					return errors.Join(err, e)
@@ -336,18 +455,24 @@ func (d *Alias) Extract(ctx context.Context, obj model.Obj, args model.ArchiveIn
 		return nil, errs.ObjectNotFound
 	}
 	for _, dst := range dsts {
-		link, err := d.extract(ctx, dst, sub, args)
-		if err == nil {
-			if !args.Redirect && len(link.URL) > 0 {
-				if d.DownloadConcurrency > 0 {
-					link.Concurrency = d.DownloadConcurrency
-				}
-				if d.DownloadPartSize > 0 {
-					link.PartSize = d.DownloadPartSize * utils.KB
-				}
-			}
-			return link, nil
+		reqPath := stdpath.Join(dst, sub)
+		link, err := d.extract(ctx, reqPath, args)
+		if err != nil {
+			continue
 		}
+		if link == nil {
+			return &model.Link{
+				URL: fmt.Sprintf("%s/ap%s?inner=%s&pass=%s&sign=%s",
+					common.GetApiUrl(ctx),
+					utils.EncodePath(reqPath, true),
+					utils.EncodePath(args.InnerPath, true),
+					url.QueryEscape(args.Password),
+					sign.SignArchive(reqPath)),
+			}, nil
+		}
+		resultLink := *link
+		resultLink.SyncClosers = utils.NewSyncClosers(link)
+		return &resultLink, nil
 	}
 	return nil, errs.NotImplement
 }

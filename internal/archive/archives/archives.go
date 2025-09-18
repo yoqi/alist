@@ -1,10 +1,11 @@
 package archives
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
-	stdpath "path"
+	"path/filepath"
 	"strings"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/archive/tool"
@@ -18,7 +19,8 @@ type Archives struct {
 
 func (Archives) AcceptedExtensions() []string {
 	return []string{
-		".br", ".bz2", ".gz", ".lz4", ".lz", ".sz", ".s2", ".xz", ".zz", ".zst", ".tar",
+		".br", ".bz2", ".gz", ".lz4", ".lz", ".mz", ".sz", ".s2", ".xz", ".zz", ".zst", ".tar",
+		".tgz", ".tlz4", ".tlz", ".tbz2", ".txz", ".tzst",
 	}
 }
 
@@ -106,7 +108,7 @@ func (Archives) Decompress(ss []*stream.SeekableStream, outputPath string, args 
 		}
 		if stat.IsDir() {
 			isDir = true
-			outputPath = stdpath.Join(outputPath, stat.Name())
+			outputPath = filepath.Join(outputPath, stat.Name())
 			err = os.Mkdir(outputPath, 0700)
 			if err != nil {
 				return filterPassword(err)
@@ -119,11 +121,14 @@ func (Archives) Decompress(ss []*stream.SeekableStream, outputPath string, args 
 				return err
 			}
 			relPath := strings.TrimPrefix(p, path+"/")
-			dstPath := stdpath.Join(outputPath, relPath)
+			dstPath := filepath.Join(outputPath, relPath)
+			if !strings.HasPrefix(dstPath, outputPath+string(os.PathSeparator)) {
+				return fmt.Errorf("illegal file path: %s", relPath)
+			}
 			if d.IsDir() {
 				err = os.MkdirAll(dstPath, 0700)
 			} else {
-				dir := stdpath.Dir(dstPath)
+				dir := filepath.Dir(dstPath)
 				err = decompress(fsys, p, dir, func(_ float64) {})
 			}
 			return err

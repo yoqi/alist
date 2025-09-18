@@ -56,14 +56,27 @@ type FsListResp struct {
 	Provider string    `json:"provider"`
 }
 
-func FsList(c *gin.Context) {
+func FsListSplit(c *gin.Context) {
 	var req ListReq
 	if err := c.ShouldBind(&req); err != nil {
 		common.ErrorResp(c, err, 400)
 		return
 	}
 	req.Validate()
-	user := c.MustGet("user").(*model.User)
+	if strings.HasPrefix(req.Path, "/@s") {
+		req.Path = strings.TrimPrefix(req.Path, "/@s")
+		SharingList(c, &req)
+		return
+	}
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	if user.IsGuest() && user.Disabled {
+		common.ErrorStrResp(c, "Guest user is disabled, login please", 401)
+		return
+	}
+	FsList(c, &req, user)
+}
+
+func FsList(c *gin.Context, req *ListReq, user *model.User) {
 	reqPath, err := user.JoinPath(req.Path)
 	if err != nil {
 		common.ErrorResp(c, err, 403)
@@ -76,7 +89,7 @@ func FsList(c *gin.Context) {
 			return
 		}
 	}
-	c.Set("meta", meta)
+	common.GinWithValue(c, conf.MetaKey, meta)
 	if !common.CanAccess(user, meta, reqPath, req.Password) {
 		common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
 		return
@@ -85,7 +98,7 @@ func FsList(c *gin.Context) {
 		common.ErrorStrResp(c, "Refresh without permission", 403)
 		return
 	}
-	objs, err := fs.List(c, reqPath, &fs.ListArgs{Refresh: req.Refresh})
+	objs, err := fs.List(c.Request.Context(), reqPath, &fs.ListArgs{Refresh: req.Refresh})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
@@ -112,7 +125,7 @@ func FsDirs(c *gin.Context) {
 		common.ErrorResp(c, err, 400)
 		return
 	}
-	user := c.MustGet("user").(*model.User)
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
 	reqPath := req.Path
 	if req.ForceRoot {
 		if !user.IsAdmin() {
@@ -134,12 +147,12 @@ func FsDirs(c *gin.Context) {
 			return
 		}
 	}
-	c.Set("meta", meta)
+	common.GinWithValue(c, conf.MetaKey, meta)
 	if !common.CanAccess(user, meta, reqPath, req.Password) {
 		common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
 		return
 	}
-	objs, err := fs.List(c, reqPath, &fs.ListArgs{})
+	objs, err := fs.List(c.Request.Context(), reqPath, &fs.ListArgs{})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
@@ -243,13 +256,26 @@ type FsGetResp struct {
 	Related  []ObjResp `json:"related"`
 }
 
-func FsGet(c *gin.Context) {
+func FsGetSplit(c *gin.Context) {
 	var req FsGetReq
 	if err := c.ShouldBind(&req); err != nil {
 		common.ErrorResp(c, err, 400)
 		return
 	}
-	user := c.MustGet("user").(*model.User)
+	if strings.HasPrefix(req.Path, "/@s") {
+		req.Path = strings.TrimPrefix(req.Path, "/@s")
+		SharingGet(c, &req)
+		return
+	}
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	if user.IsGuest() && user.Disabled {
+		common.ErrorStrResp(c, "Guest user is disabled, login please", 401)
+		return
+	}
+	FsGet(c, &req, user)
+}
+
+func FsGet(c *gin.Context, req *FsGetReq, user *model.User) {
 	reqPath, err := user.JoinPath(req.Path)
 	if err != nil {
 		common.ErrorResp(c, err, 403)
@@ -262,12 +288,12 @@ func FsGet(c *gin.Context) {
 			return
 		}
 	}
-	c.Set("meta", meta)
+	common.GinWithValue(c, conf.MetaKey, meta)
 	if !common.CanAccess(user, meta, reqPath, req.Password) {
 		common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
 		return
 	}
-	obj, err := fs.Get(c, reqPath, &fs.GetArgs{})
+	obj, err := fs.Get(c.Request.Context(), reqPath, &fs.GetArgs{})
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
@@ -275,8 +301,8 @@ func FsGet(c *gin.Context) {
 	var rawURL string
 
 	storage, err := fs.GetStorage(reqPath, &fs.GetStoragesArgs{})
-	provider := "unknown"
-	if err == nil {
+	provider, ok := model.GetProvider(obj)
+	if !ok && err == nil {
 		provider = storage.Config().Name
 	}
 	if !obj.IsDir() {
@@ -285,16 +311,12 @@ func FsGet(c *gin.Context) {
 			return
 		}
 		if storage.Config().MustProxy() || storage.GetStorage().WebProxy {
-			query := ""
-			if isEncrypt(meta, reqPath) || setting.GetBool(conf.SignAll) {
-				query = "?sign=" + sign.Sign(reqPath)
-			}
-			if storage.GetStorage().DownProxyUrl != "" {
-				rawURL = fmt.Sprintf("%s%s?sign=%s",
-					strings.Split(storage.GetStorage().DownProxyUrl, "\n")[0],
-					utils.EncodePath(reqPath, true),
-					sign.Sign(reqPath))
-			} else {
+			rawURL = common.GenerateDownProxyURL(storage.GetStorage(), reqPath)
+			if rawURL == "" {
+				query := ""
+				if isEncrypt(meta, reqPath) || setting.GetBool(conf.SignAll) {
+					query = "?sign=" + sign.Sign(reqPath)
+				}
 				rawURL = fmt.Sprintf("%s/p%s%s",
 					common.GetApiUrl(c),
 					utils.EncodePath(reqPath, true),
@@ -306,7 +328,7 @@ func FsGet(c *gin.Context) {
 				rawURL = url
 			} else {
 				// if storage is not proxy, use raw url by fs.Link
-				link, _, err := fs.Link(c, reqPath, model.LinkArgs{
+				link, _, err := fs.Link(c.Request.Context(), reqPath, model.LinkArgs{
 					IP:       c.ClientIP(),
 					Header:   c.Request.Header,
 					Redirect: true,
@@ -315,13 +337,14 @@ func FsGet(c *gin.Context) {
 					common.ErrorResp(c, err, 500)
 					return
 				}
+				defer link.Close()
 				rawURL = link.URL
 			}
 		}
 	}
 	var related []model.Obj
 	parentPath := stdpath.Dir(reqPath)
-	sameLevelFiles, err := fs.List(c, parentPath, &fs.ListArgs{})
+	sameLevelFiles, err := fs.List(c.Request.Context(), parentPath, &fs.ListArgs{})
 	if err == nil {
 		related = filterRelated(sameLevelFiles, obj)
 	}
@@ -375,7 +398,7 @@ func FsOther(c *gin.Context) {
 		common.ErrorResp(c, err, 400)
 		return
 	}
-	user := c.MustGet("user").(*model.User)
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
 	var err error
 	req.Path, err = user.JoinPath(req.Path)
 	if err != nil {
@@ -389,12 +412,12 @@ func FsOther(c *gin.Context) {
 			return
 		}
 	}
-	c.Set("meta", meta)
+	common.GinWithValue(c, conf.MetaKey, meta)
 	if !common.CanAccess(user, meta, req.Path, req.Password) {
 		common.ErrorStrResp(c, "password is incorrect or you have no permission", 403)
 		return
 	}
-	res, err := fs.Other(c, req.FsOtherArgs)
+	res, err := fs.Other(c.Request.Context(), req.FsOtherArgs)
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return

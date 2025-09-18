@@ -2,7 +2,6 @@ package model
 
 import (
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -37,23 +36,37 @@ type Obj interface {
 // FileStreamer ->check FileStream for more comments
 type FileStreamer interface {
 	io.Reader
-	io.Closer
+	utils.ClosersIF
 	Obj
 	GetMimetype() string
-	//SetReader(io.Reader)
 	NeedStore() bool
 	IsForceStreamUpload() bool
 	GetExist() Obj
 	SetExist(Obj)
-	//for a non-seekable Stream, RangeRead supports peeking some data, and CacheFullInTempFile still works
+	// for a non-seekable Stream, RangeRead supports peeking some data, and CacheFullAndWriter still works
 	RangeRead(http_range.Range) (io.Reader, error)
-	//for a non-seekable Stream, if Read is called, this function won't work
-	CacheFullInTempFile() (File, error)
-	SetTmpFile(r *os.File)
+	// for a non-seekable Stream, if Read is called, this function won't work.
+	// caches the full Stream and writes it to writer (if provided, even if the stream is already cached).
+	CacheFullAndWriter(up *UpdateProgress, writer io.Writer) (File, error)
+	SetTmpFile(file File)
+	// if the Stream is not a File and is not cached, returns nil.
 	GetFile() File
 }
 
 type UpdateProgress func(percentage float64)
+
+func UpdateProgressWithRange(inner UpdateProgress, start, end float64) UpdateProgress {
+	return func(p float64) {
+		if p < 0 {
+			p = 0
+		}
+		if p > 100 {
+			p = 100
+		}
+		scaled := start + (end-start)*(p/100.0)
+		inner(scaled)
+	}
+}
 
 type URL interface {
 	URL() string
@@ -65,6 +78,10 @@ type Thumb interface {
 
 type SetPath interface {
 	SetPath(path string)
+}
+
+type ObjWithProvider interface {
+	GetProvider() string
 }
 
 func SortFiles(objs []Obj, orderBy, orderDirection string) {
@@ -153,6 +170,16 @@ func GetUrl(obj Obj) (url string, ok bool) {
 	return url, false
 }
 
+func GetProvider(obj Obj) (string, bool) {
+	if obj, ok := obj.(ObjWithProvider); ok {
+		return obj.GetProvider(), true
+	}
+	if unwrap, ok := obj.(ObjUnwrap); ok {
+		return GetProvider(unwrap.Unwrap())
+	}
+	return "unknown", false
+}
+
 func GetRawObject(obj Obj) *Object {
 	switch v := obj.(type) {
 	case *ObjThumbURL:
@@ -160,6 +187,8 @@ func GetRawObject(obj Obj) *Object {
 	case *ObjThumb:
 		return &v.Object
 	case *ObjectURL:
+		return &v.Object
+	case *ObjectProvider:
 		return &v.Object
 	case *Object:
 		return v

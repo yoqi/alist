@@ -20,6 +20,34 @@
 - [行動規範](./CODE_OF_CONDUCT.md)
 - [ライセンス](./LICENSE)
 
+## 免責事項
+
+OpenListは、OpenListチームが独立して維持するオープンソースプロジェクトであり、AGPL-3.0ライセンスに従い、完全なコードの開放性と変更の透明性を維持することに専念しています。
+
+コミュニティ内で、OpenListApp/OpenListAppなど、本プロジェクトと類似した名称を持つサードパーティプロジェクトや、同一または類似した命名を採用する有料専有ソフトウェアが出現していることを確認しています。ユーザーの誤解を避けるため、以下のように宣言いたします：
+
+- OpenListは、いかなるサードパーティ派生プロジェクトとも公式な関連性はありません。
+
+- 本プロジェクトのすべてのソフトウェア、コード、サービスはOpenListチームによって維持され、GitHubで無料で取得できます。
+
+- プロジェクトドキュメントとAPIサービスは主にCloudflareが提供する公益リソースに依存しており、現在有料プランや商業展開はなく、既存機能の使用に費用は発生しません。
+
+私たちはコミュニティの自由な使用と派生開発の権利を尊重しますが、下流プロジェクトに強く呼びかけます：
+
+- 「OpenList」の名前で偽装宣伝や商業利益を得るべきではありません；
+
+- OpenListベースのコードをクローズドソースで配布したり、AGPLライセンス条項に違反してはいけません。
+
+エコシステムの健全な発展をより良く維持するため、以下を推奨します：
+
+- プロジェクトの出典を明確に示し、オープンソース精神に合致する適切なオープンソースライセンスを選択する；
+
+- 商業用途が関わる場合は、「OpenList」や混乱を招く可能性のある名前をプロジェクト名として使用することを避ける；
+
+- OpenListTeam/Logo下の素材を使用する必要がある場合は、協定を遵守した上で修正して使用できます。
+
+OpenListプロジェクトへのご支援とご理解をありがとうございます。
+
 ## 特徴
 
 - [x] 複数ストレージ
@@ -46,7 +74,6 @@
   - [x] [Thunder](https://pan.xunlei.com)
   - [x] [Lanzou](https://www.lanzou.com)
   - [x] [ILanzou](https://www.ilanzou.com)
-  - [x] [Aliyundrive share](https://www.alipan.com)
   - [x] [Google photo](https://photos.google.com)
   - [x] [Mega.nz](https://mega.nz)
   - [x] [Baidu photo](https://photo.baidu.com)
@@ -57,6 +84,15 @@
   - [x] [FeijiPan](https://www.feijipan.com)
   - [x] [dogecloud](https://www.dogecloud.com/product/oss)
   - [x] [Azure Blob Storage](https://azure.microsoft.com/products/storage/blobs)
+  - [x] [Chaoxing](https://www.chaoxing.com)
+  - [x] [CNB](https://cnb.cool/)
+  - [x] [Degoo](https://degoo.com)
+  - [x] [Doubao](https://www.doubao.com)
+  - [x] [Febbox](https://www.febbox.com)
+  - [x] [GitHub](https://github.com)
+  - [x] [OpenList](https://github.com/OpenListTeam/OpenList)
+  - [x] [Teldrive](https://github.com/tgdrive/teldrive)
+  - [x] [Weiyun](https://www.weiyun.com)
 - [x] 簡単にデプロイでき、すぐに使える
 - [x] ファイルプレビュー（PDF、markdown、コード、テキストなど）
 - [x] ギャラリーモードでの画像プレビュー
@@ -78,8 +114,9 @@
 
 ## ドキュメント
 
-- 📘 [ドキュメント・インストールガイド](https://docs.oplist.org)
-- 📚 [バックアップドキュメントサイト](https://docs.openlist.team)
+- 📘 [グローバルサイト](https://doc.oplist.org)
+- 📚 [バックアップサイト](https://doc.openlist.team)
+- 🌏 [CNサイト](https://doc.oplist.org.cn)
 
 ## デモ
 

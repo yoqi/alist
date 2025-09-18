@@ -371,7 +371,7 @@ func (xc *XunLeiCommon) Put(ctx context.Context, dstDir model.Obj, file model.Fi
 	gcid := file.GetHash().GetHash(hash_extend.GCID)
 	var err error
 	if len(gcid) < hash_extend.GCID.Width {
-		_, gcid, err = stream.CacheFullInTempFileAndHash(file, hash_extend.GCID, file.GetSize())
+		_, gcid, err = stream.CacheFullAndHash(file, &up, hash_extend.GCID, file.GetSize())
 		if err != nil {
 			return err
 		}

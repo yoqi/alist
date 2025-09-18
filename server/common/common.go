@@ -1,6 +1,10 @@
 package common
 
 import (
+	"context"
+	"fmt"
+	"html"
+	"net/http"
 	"strings"
 
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
@@ -35,6 +39,41 @@ func ErrorResp(c *gin.Context, err error, code int, l ...bool) {
 	//	Data:    nil,
 	//})
 	//c.Abort()
+}
+
+// ErrorPage is used to return error page HTML.
+// It also returns standard HTTP status code.
+// @param l: if true, log error
+func ErrorPage(c *gin.Context, err error, code int, l ...bool) {
+
+	if len(l) > 0 && l[0] {
+		if flags.Debug || flags.Dev {
+			log.Errorf("%+v", err)
+		} else {
+			log.Errorf("%v", err)
+		}
+	}
+
+	codes := fmt.Sprintf("%d %s", code, http.StatusText(code))
+
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="dark light" />
+		<meta name="robots" content="noindex" />
+		<title>%s</title>
+	</head>
+	<body>
+		<h1>%s</h1>
+		<hr>
+		<p>%s</p>
+	</body>
+</html>`,
+		codes, codes, html.EscapeString(hidePrivacy(err.Error())))
+	c.Data(code, "text/html; charset=utf-8", []byte(html))
+	c.Abort()
 }
 
 func ErrorWithDataResp(c *gin.Context, err error, code int, data interface{}, l ...bool) {
@@ -87,4 +126,21 @@ func Pluralize(count int, singular, plural string) string {
 		return singular
 	}
 	return plural
+}
+
+func GinWithValue(c *gin.Context, keyAndValue ...any) {
+	c.Request = c.Request.WithContext(
+		ContentWithValue(c.Request.Context(), keyAndValue...),
+	)
+}
+
+func ContentWithValue(ctx context.Context, keyAndValue ...any) context.Context {
+	if len(keyAndValue) < 1 || len(keyAndValue)%2 != 0 {
+		panic("keyAndValue must be an even number of arguments (key, value, ...)")
+	}
+	for len(keyAndValue) > 0 {
+		ctx = context.WithValue(ctx, keyAndValue[0], keyAndValue[1])
+		keyAndValue = keyAndValue[2:]
+	}
+	return ctx
 }

@@ -31,11 +31,8 @@ env:
   REGISTRY: ghcr.io
   ARTIFACT_NAME: 'binaries_docker_release'
   ARTIFACT_NAME_LITE: 'binaries_docker_release_lite'
-  RELEASE_PLATFORMS: 'linux/amd64,linux/arm64,linux/arm/v7,linux/386,linux/arm/v6,linux/s390x,linux/ppc64le,linux/riscv64'
+  RELEASE_PLATFORMS: 'linux/amd64,linux/arm64,linux/arm/v7,linux/386,linux/arm/v6,linux/ppc64le,linux/riscv64,linux/loong64' ### Temporarily disable Docker builds for linux/s390x architectures for unknown reasons.
   IMAGE_PUSH: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-  IMAGE_IS_PROD: ${{ github.ref_type == 'tag' || github.event.inputs.as_latest == 'true' }}
-  IMAGE_TAGS_BETA: |
-    type=raw,value=beta,enable={{is_default_branch}}
 
 permissions:
   packages: write
@@ -50,7 +47,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: '1.25.0'
 
       - name: Cache Musl
         id: cache-musl
@@ -65,17 +62,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build go binary (beta)
-        if: env.IMAGE_IS_PROD != 'true'
-        run: bash build.sh beta docker-multiplatform
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build go binary (release)
-        if: env.IMAGE_IS_PROD == 'true'
         run: bash build.sh release docker-multiplatform
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FRONTEND_REPO: ${{ vars.FRONTEND_REPO }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -88,7 +79,7 @@ jobs:
             !build/musl-libs/**
 
   build_binary_lite:
-    name: Build Binaries for Docker Release
+    name: Build Binaries for Docker Release (Lite)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -96,7 +87,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version: '1.25.0'
 
       - name: Cache Musl
         id: cache-musl
@@ -111,17 +102,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build go binary (beta)
-        if: env.IMAGE_IS_PROD != 'true'
-        run: bash build.sh beta lite docker-multiplatform
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build go binary (release)
-        if: env.IMAGE_IS_PROD == 'true'
         run: bash build.sh release lite docker-multiplatform
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FRONTEND_REPO: ${{ vars.FRONTEND_REPO }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -142,15 +127,19 @@ jobs:
         image: ["latest", "ffmpeg", "aria2", "aio"]
         include:
           - image: "latest"
+            base_image_tag: "base"
             build_arg: ""
             tag_favor: ""
           - image: "ffmpeg"
+            base_image_tag: "ffmpeg"
             build_arg: INSTALL_FFMPEG=true
             tag_favor: "suffix=-ffmpeg,onlatest=true"
           - image: "aria2"
+            base_image_tag: "aria2"
             build_arg: INSTALL_ARIA2=true
             tag_favor: "suffix=-aria2,onlatest=true"
           - image: "aio"
+            base_image_tag: "aio"
             build_arg: |
               INSTALL_FFMPEG=true
               INSTALL_ARIA2=true
@@ -181,7 +170,7 @@ jobs:
         if: env.IMAGE_PUSH == 'true'
         uses: docker/login-action@v3
         with:
-          username: ${{ env.DOCKERHUB_ORG_NAME }}
+          username: ${{ vars.DOCKERHUB_ORG_NAME_BACKUP || env.DOCKERHUB_ORG_NAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker meta
@@ -192,13 +181,11 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.GHCR_ORG_NAME }}/${{ env.IMAGE_NAME }}
             ${{ env.DOCKERHUB_ORG_NAME }}/${{ env.IMAGE_NAME_DOCKERHUB }}
           tags: >
-            ${{ env.IMAGE_IS_PROD == 'true' && (
-              github.event_name == 'workflow_dispatch'
+            ${{ github.event_name == 'workflow_dispatch'
                 && format('type=raw,value={0}', github.event.inputs.manual_tag)
-              || format('type=raw,value={0}', github.ref_name)
-            ) || env.IMAGE_TAGS_BETA }}
+              || format('type=raw,value={0}', github.ref_name) }}
           flavor: |
-            latest=${{ env.IMAGE_IS_PROD }}
+            latest=${{ github.event_name == 'push' || github.event.inputs.as_latest == 'true' }}
             ${{ matrix.tag_favor }}
 
       - name: Build and push
@@ -208,29 +195,35 @@ jobs:
           context: .
           file: Dockerfile.ci
           push: ${{ env.IMAGE_PUSH == 'true' }}
-          build-args: ${{ matrix.build_arg }}
+          build-args: |
+            BASE_IMAGE_TAG=${{ matrix.base_image_tag }}
+            ${{ matrix.build_arg }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ env.RELEASE_PLATFORMS }}
 
   release_docker_lite:
     needs: build_binary_lite
-    name: Release Docker image
+    name: Release Docker image (Lite)
     runs-on: ubuntu-latest
     strategy:
       matrix:
         image: ["latest", "ffmpeg", "aria2", "aio"]
         include:
           - image: "latest"
+            base_image_tag: "base"
             build_arg: ""
             tag_favor: "suffix=-lite,onlatest=true"
           - image: "ffmpeg"
+            base_image_tag: "ffmpeg"
             build_arg: INSTALL_FFMPEG=true
             tag_favor: "suffix=-lite-ffmpeg,onlatest=true"
           - image: "aria2"
+            base_image_tag: "aria2"
             build_arg: INSTALL_ARIA2=true
             tag_favor: "suffix=-lite-aria2,onlatest=true"
           - image: "aio"
+            base_image_tag: "aio"
             build_arg: |
               INSTALL_FFMPEG=true
               INSTALL_ARIA2=true
@@ -261,7 +254,7 @@ jobs:
         if: env.IMAGE_PUSH == 'true'
         uses: docker/login-action@v3
         with:
-          username: ${{ env.DOCKERHUB_ORG_NAME }}
+          username: ${{ vars.DOCKERHUB_ORG_NAME_BACKUP || env.DOCKERHUB_ORG_NAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker meta
@@ -272,13 +265,11 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.GHCR_ORG_NAME }}/${{ env.IMAGE_NAME }}
             ${{ env.DOCKERHUB_ORG_NAME }}/${{ env.IMAGE_NAME_DOCKERHUB }}
           tags: >
-            ${{ env.IMAGE_IS_PROD == 'true' && (
-              github.event_name == 'workflow_dispatch'
+            ${{ github.event_name == 'workflow_dispatch'
                 && format('type=raw,value={0}', github.event.inputs.manual_tag)
-              || format('type=raw,value={0}', github.ref_name)
-            ) || env.IMAGE_TAGS_BETA }}
+              || format('type=raw,value={0}', github.ref_name) }}
           flavor: |
-            latest=${{ env.IMAGE_IS_PROD }}
+            latest=${{ github.event_name == 'push' || github.event.inputs.as_latest == 'true' }}
             ${{ matrix.tag_favor }}
 
       - name: Build and push
@@ -288,7 +279,9 @@ jobs:
           context: .
           file: Dockerfile.ci
           push: ${{ env.IMAGE_PUSH == 'true' }}
-          build-args: ${{ matrix.build_arg }}
+          build-args: |
+            BASE_IMAGE_TAG=${{ matrix.base_image_tag }}
+            ${{ matrix.build_arg }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ env.RELEASE_PLATFORMS }}

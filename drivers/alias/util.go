@@ -2,8 +2,6 @@ package alias
 
 import (
 	"context"
-	"fmt"
-	"net/url"
 	stdpath "path"
 	"strings"
 
@@ -12,8 +10,6 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/fs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
-	"github.com/OpenListTeam/OpenList/v4/internal/sign"
-	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 )
 
@@ -54,79 +50,22 @@ func (d *Alias) getRootAndPath(path string) (string, string) {
 	return parts[0], parts[1]
 }
 
-func (d *Alias) get(ctx context.Context, path string, dst, sub string) (model.Obj, error) {
-	obj, err := fs.Get(ctx, stdpath.Join(dst, sub), &fs.GetArgs{NoLog: true})
-	if err != nil {
-		return nil, err
-	}
-	return &model.Object{
-		Path:     path,
-		Name:     obj.GetName(),
-		Size:     obj.GetSize(),
-		Modified: obj.ModTime(),
-		IsFolder: obj.IsDir(),
-		HashInfo: obj.GetHash(),
-	}, nil
-}
-
-func (d *Alias) list(ctx context.Context, dst, sub string, args *fs.ListArgs) ([]model.Obj, error) {
-	objs, err := fs.List(ctx, stdpath.Join(dst, sub), args)
-	// the obj must implement the model.SetPath interface
-	// return objs, err
-	if err != nil {
-		return nil, err
-	}
-	return utils.SliceConvert(objs, func(obj model.Obj) (model.Obj, error) {
-		thumb, ok := model.GetThumb(obj)
-		objRes := model.Object{
-			Name:     obj.GetName(),
-			Size:     obj.GetSize(),
-			Modified: obj.ModTime(),
-			IsFolder: obj.IsDir(),
-		}
-		if !ok {
-			return &objRes, nil
-		}
-		return &model.ObjThumb{
-			Object: objRes,
-			Thumbnail: model.Thumbnail{
-				Thumbnail: thumb,
-			},
-		}, nil
-	})
-}
-
-func (d *Alias) link(ctx context.Context, dst, sub string, args model.LinkArgs) (*model.Link, error) {
-	reqPath := stdpath.Join(dst, sub)
-	// 参考 crypt 驱动
+func (d *Alias) link(ctx context.Context, reqPath string, args model.LinkArgs) (*model.Link, model.Obj, error) {
 	storage, reqActualPath, err := op.GetStorageAndActualPath(reqPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	useRawLink := len(common.GetApiUrl(ctx)) == 0 // ftp、s3
-	if !useRawLink {
-		_, ok := storage.(*Alias)
-		useRawLink = !ok && !args.Redirect
+	if !args.Redirect {
+		return op.Link(ctx, storage, reqActualPath, args)
 	}
-	if useRawLink {
-		link, _, err := op.Link(ctx, storage, reqActualPath, args)
-		return link, err
-	}
-	_, err = fs.Get(ctx, reqPath, &fs.GetArgs{NoLog: true})
+	obj, err := fs.Get(ctx, reqPath, &fs.GetArgs{NoLog: true})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if common.ShouldProxy(storage, stdpath.Base(sub)) {
-		link := &model.Link{
-			URL: fmt.Sprintf("%s/p%s?sign=%s",
-				common.GetApiUrl(ctx),
-				utils.EncodePath(reqPath, true),
-				sign.Sign(reqPath)),
-		}
-		return link, nil
+	if common.ShouldProxy(storage, stdpath.Base(reqPath)) {
+		return nil, obj, nil
 	}
-	link, _, err := op.Link(ctx, storage, reqActualPath, args)
-	return link, err
+	return op.Link(ctx, storage, reqActualPath, args)
 }
 
 func (d *Alias) getReqPath(ctx context.Context, obj model.Obj, isParent bool) ([]*string, error) {
@@ -197,8 +136,7 @@ func (d *Alias) listArchive(ctx context.Context, dst, sub string, args model.Arc
 	return nil, errs.NotImplement
 }
 
-func (d *Alias) extract(ctx context.Context, dst, sub string, args model.ArchiveInnerArgs) (*model.Link, error) {
-	reqPath := stdpath.Join(dst, sub)
+func (d *Alias) extract(ctx context.Context, reqPath string, args model.ArchiveInnerArgs) (*model.Link, error) {
 	storage, reqActualPath, err := op.GetStorageAndActualPath(reqPath)
 	if err != nil {
 		return nil, err
@@ -206,20 +144,12 @@ func (d *Alias) extract(ctx context.Context, dst, sub string, args model.Archive
 	if _, ok := storage.(driver.ArchiveReader); !ok {
 		return nil, errs.NotImplement
 	}
-	if args.Redirect && common.ShouldProxy(storage, stdpath.Base(sub)) {
-		_, err = fs.Get(ctx, reqPath, &fs.GetArgs{NoLog: true})
-		if err != nil {
+	if args.Redirect && common.ShouldProxy(storage, stdpath.Base(reqPath)) {
+		_, err := fs.Get(ctx, reqPath, &fs.GetArgs{NoLog: true})
+		if err == nil {
 			return nil, err
 		}
-		link := &model.Link{
-			URL: fmt.Sprintf("%s/ap%s?inner=%s&pass=%s&sign=%s",
-				common.GetApiUrl(ctx),
-				utils.EncodePath(reqPath, true),
-				utils.EncodePath(args.InnerPath, true),
-				url.QueryEscape(args.Password),
-				sign.SignArchive(reqPath)),
-		}
-		return link, nil
+		return nil, nil
 	}
 	link, _, err := op.DriverExtract(ctx, storage, reqActualPath, args)
 	return link, err

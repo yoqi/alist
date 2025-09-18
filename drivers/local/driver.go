@@ -19,6 +19,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/sign"
+	"github.com/OpenListTeam/OpenList/v4/internal/stream"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/OpenListTeam/times"
@@ -31,6 +32,9 @@ type Local struct {
 	model.Storage
 	Addition
 	mkdirPerm int32
+
+	// directory size data
+	directoryMap DirectoryMap
 
 	// zero means no limit
 	thumbConcurrency int
@@ -64,6 +68,15 @@ func (d *Local) Init(ctx context.Context) error {
 			return err
 		}
 		d.Addition.RootFolderPath = abs
+	}
+	if d.DirectorySize {
+		d.directoryMap.root = d.GetRootPath()
+		_, err := d.directoryMap.CalculateDirSize(d.GetRootPath())
+		if err != nil {
+			return err
+		}
+	} else {
+		d.directoryMap.Clear()
 	}
 	if d.ThumbCacheFolder != "" && !utils.Exists(d.ThumbCacheFolder) {
 		err := os.MkdirAll(d.ThumbCacheFolder, os.FileMode(d.mkdirPerm))
@@ -123,6 +136,9 @@ func (d *Local) GetAddition() driver.Additional {
 func (d *Local) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
 	fullPath := dir.GetPath()
 	rawFiles, err := readDir(fullPath)
+	if d.DirectorySize && args.Refresh {
+		d.directoryMap.RecalculateDirSize()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +162,12 @@ func (d *Local) FileInfoToObj(ctx context.Context, f fs.FileInfo, reqPath string
 	}
 	isFolder := f.IsDir() || isSymlinkDir(f, fullPath)
 	var size int64
-	if !isFolder {
+	if isFolder {
+		node, ok := d.directoryMap.Get(filepath.Join(fullPath, f.Name()))
+		if ok {
+			size = node.fileSum + node.directorySum
+		}
+	} else {
 		size = f.Size()
 	}
 	var ctime time.Time
@@ -172,19 +193,6 @@ func (d *Local) FileInfoToObj(ctx context.Context, f fs.FileInfo, reqPath string
 	}
 	return &file
 }
-func (d *Local) GetMeta(ctx context.Context, path string) (model.Obj, error) {
-	f, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	file := d.FileInfoToObj(ctx, f, path, path)
-	//h := "123123"
-	//if s, ok := f.(model.SetHash); ok && file.GetHash() == ("","")  {
-	//	s.SetHash(h,"SHA1")
-	//}
-	return file, nil
-
-}
 
 func (d *Local) Get(ctx context.Context, path string) (model.Obj, error) {
 	path = filepath.Join(d.GetRootPath(), path)
@@ -198,7 +206,12 @@ func (d *Local) Get(ctx context.Context, path string) (model.Obj, error) {
 	isFolder := f.IsDir() || isSymlinkDir(f, path)
 	size := f.Size()
 	if isFolder {
-		size = 0
+		node, ok := d.directoryMap.Get(path)
+		if ok {
+			size = node.fileSum + node.directorySum
+		}
+	} else {
+		size = f.Size()
 	}
 	var ctime time.Time
 	t, err := times.Stat(path)
@@ -220,7 +233,7 @@ func (d *Local) Get(ctx context.Context, path string) (model.Obj, error) {
 
 func (d *Local) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error) {
 	fullPath := file.GetPath()
-	var link model.Link
+	link := &model.Link{}
 	if args.Type == "thumb" && utils.Ext(file.GetName()) != "svg" {
 		var buf *bytes.Buffer
 		var thumbPath *string
@@ -240,19 +253,32 @@ func (d *Local) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (
 			if err != nil {
 				return nil, err
 			}
+			// Get thumbnail file size for Content-Length
+			stat, err := open.Stat()
+			if err != nil {
+				open.Close()
+				return nil, err
+			}
+			link.ContentLength = int64(stat.Size())
 			link.MFile = open
 		} else {
 			link.MFile = bytes.NewReader(buf.Bytes())
-			//link.Header.Set("Content-Length", strconv.Itoa(buf.Len()))
+			link.ContentLength = int64(buf.Len())
 		}
 	} else {
 		open, err := os.Open(fullPath)
 		if err != nil {
 			return nil, err
 		}
+		link.ContentLength = file.GetSize()
 		link.MFile = open
 	}
-	return &link, nil
+	link.AddIfCloser(link.MFile)
+	if !d.Config().OnlyLinkMFile {
+		link.RangeReader = stream.GetRangeReaderFromMFile(link.ContentLength, link.MFile)
+		link.MFile = nil
+	}
+	return link, nil
 }
 
 func (d *Local) MakeDir(ctx context.Context, parentDir model.Obj, dirName string) error {
@@ -270,22 +296,31 @@ func (d *Local) Move(ctx context.Context, srcObj, dstDir model.Obj) error {
 	if utils.IsSubPath(srcPath, dstPath) {
 		return fmt.Errorf("the destination folder is a subfolder of the source folder")
 	}
-	if err := os.Rename(srcPath, dstPath); err != nil && strings.Contains(err.Error(), "invalid cross-device link") {
-		// Handle cross-device file move in local driver
-		if err = d.Copy(ctx, srcObj, dstDir); err != nil {
-			return err
-		} else {
-			// Directly remove file without check recycle bin if successfully copied
-			if srcObj.IsDir() {
-				err = os.RemoveAll(srcObj.GetPath())
-			} else {
-				err = os.Remove(srcObj.GetPath())
-			}
+	err := os.Rename(srcPath, dstPath)
+	if err != nil && strings.Contains(err.Error(), "invalid cross-device link") {
+		// 跨设备移动，先复制再删除
+		if err := d.Copy(ctx, srcObj, dstDir); err != nil {
 			return err
 		}
-	} else {
-		return err
+		// 复制成功后直接删除源文件/文件夹
+		if srcObj.IsDir() {
+			return os.RemoveAll(srcObj.GetPath())
+		}
+		return os.Remove(srcObj.GetPath())
 	}
+	if err == nil {
+		srcParent := filepath.Dir(srcPath)
+		dstParent := filepath.Dir(dstPath)
+		if d.directoryMap.Has(srcParent) {
+			d.directoryMap.UpdateDirSize(srcParent)
+			d.directoryMap.UpdateDirParents(srcParent)
+		}
+		if d.directoryMap.Has(dstParent) {
+			d.directoryMap.UpdateDirSize(dstParent)
+			d.directoryMap.UpdateDirParents(dstParent)
+		}
+	}
+	return err
 }
 
 func (d *Local) Rename(ctx context.Context, srcObj model.Obj, newName string) error {
@@ -295,6 +330,14 @@ func (d *Local) Rename(ctx context.Context, srcObj model.Obj, newName string) er
 	if err != nil {
 		return err
 	}
+
+	if srcObj.IsDir() {
+		if d.directoryMap.Has(srcPath) {
+			d.directoryMap.DeleteDirNode(srcPath)
+			d.directoryMap.CalculateDirSize(dstPath)
+		}
+	}
+
 	return nil
 }
 
@@ -305,11 +348,21 @@ func (d *Local) Copy(_ context.Context, srcObj, dstDir model.Obj) error {
 		return fmt.Errorf("the destination folder is a subfolder of the source folder")
 	}
 	// Copy using otiai10/copy to perform more secure & efficient copy
-	return cp.Copy(srcPath, dstPath, cp.Options{
+	err := cp.Copy(srcPath, dstPath, cp.Options{
 		Sync:          true, // Sync file to disk after copy, may have performance penalty in filesystem such as ZFS
 		PreserveTimes: true,
 		PreserveOwner: true,
 	})
+	if err != nil {
+		return err
+	}
+
+	if d.directoryMap.Has(filepath.Dir(dstPath)) {
+		d.directoryMap.UpdateDirSize(filepath.Dir(dstPath))
+		d.directoryMap.UpdateDirParents(filepath.Dir(dstPath))
+	}
+
+	return nil
 }
 
 func (d *Local) Remove(ctx context.Context, obj model.Obj) error {
@@ -321,6 +374,13 @@ func (d *Local) Remove(ctx context.Context, obj model.Obj) error {
 			err = os.Remove(obj.GetPath())
 		}
 	} else {
+		if !utils.Exists(d.RecycleBinPath) {
+			err = os.MkdirAll(d.RecycleBinPath, 0755)
+			if err != nil {
+				return err
+			}
+		}
+
 		dstPath := filepath.Join(d.RecycleBinPath, obj.GetName())
 		if utils.Exists(dstPath) {
 			dstPath = filepath.Join(d.RecycleBinPath, obj.GetName()+"_"+time.Now().Format("20060102150405"))
@@ -330,6 +390,19 @@ func (d *Local) Remove(ctx context.Context, obj model.Obj) error {
 	if err != nil {
 		return err
 	}
+	if obj.IsDir() {
+		if d.directoryMap.Has(obj.GetPath()) {
+			d.directoryMap.DeleteDirNode(obj.GetPath())
+			d.directoryMap.UpdateDirSize(filepath.Dir(obj.GetPath()))
+			d.directoryMap.UpdateDirParents(filepath.Dir(obj.GetPath()))
+		}
+	} else {
+		if d.directoryMap.Has(filepath.Dir(obj.GetPath())) {
+			d.directoryMap.UpdateDirSize(filepath.Dir(obj.GetPath()))
+			d.directoryMap.UpdateDirParents(filepath.Dir(obj.GetPath()))
+		}
+	}
+
 	return nil
 }
 
@@ -353,6 +426,11 @@ func (d *Local) Put(ctx context.Context, dstDir model.Obj, stream model.FileStre
 	if err != nil {
 		log.Errorf("[local] failed to change time of %s: %s", fullPath, err)
 	}
+	if d.directoryMap.Has(dstDir.GetPath()) {
+		d.directoryMap.UpdateDirSize(dstDir.GetPath())
+		d.directoryMap.UpdateDirParents(dstDir.GetPath())
+	}
+
 	return nil
 }
 
