@@ -41,12 +41,25 @@ type FileInfo struct {
 }
 
 type filesResp struct {
-	Files []FileInfo `json:"files"`
+	Files      []FileInfo `json:"files"`
+	NextOffset int        `json:"next_offset"`
 }
 
 type downloadResp struct {
 	URL    string `json:"url"`
 	Result string `json:"result"`
+}
+
+type spacesResp struct {
+	Id        int64  `json:"id"`
+	Name      string `json:"name"`
+	Result    string `json:"result"`
+	Total     int64  `json:"total"`
+	Used      int64  `json:"used"`
+	UsedParts []struct {
+		Type string `json:"type"`
+		Used int64  `json:"used"`
+	} `json:"used_parts"`
 }
 
 type Obj struct {

@@ -5,18 +5,21 @@ import (
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	_115_open "github.com/OpenListTeam/OpenList/v4/drivers/115_open"
+	_123 "github.com/OpenListTeam/OpenList/v4/drivers/123"
 	_123_open "github.com/OpenListTeam/OpenList/v4/drivers/123_open"
 	"github.com/OpenListTeam/OpenList/v4/drivers/pikpak"
 	"github.com/OpenListTeam/OpenList/v4/drivers/thunder"
 	"github.com/OpenListTeam/OpenList/v4/drivers/thunder_browser"
 	"github.com/OpenListTeam/OpenList/v4/drivers/thunderx"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
+	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/offline_download/tool"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/internal/task"
 	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/gin-gonic/gin"
+	"github.com/pkg/errors"
 )
 
 type SetAria2Req struct {
@@ -190,6 +193,50 @@ func Set115Open(c *gin.Context) {
 		return
 	}
 	_tool, err := tool.Tools.Get("115 Open")
+	if err != nil {
+		common.ErrorResp(c, err, 500)
+		return
+	}
+	if _, err := _tool.Init(); err != nil {
+		common.ErrorResp(c, err, 500)
+		return
+	}
+	common.SuccessResp(c, "ok")
+}
+
+type Set123PanReq struct {
+	TempDir string `json:"temp_dir" form:"temp_dir"`
+}
+
+func Set123Pan(c *gin.Context) {
+	var req Set123PanReq
+	if err := c.ShouldBind(&req); err != nil {
+		common.ErrorResp(c, err, 400)
+		return
+	}
+	if req.TempDir != "" {
+		storage, _, err := op.GetStorageAndActualPath(req.TempDir)
+		if err != nil {
+			common.ErrorStrResp(c, "storage does not exists", 400)
+			return
+		}
+		if storage.Config().CheckStatus && storage.GetStorage().Status != op.WORK {
+			common.ErrorStrResp(c, "storage not init: "+storage.GetStorage().Status, 400)
+			return
+		}
+		if _, ok := storage.(*_123.Pan123); !ok {
+			common.ErrorStrResp(c, "unsupported storage driver for offline download, only 123Pan is supported", 400)
+			return
+		}
+	}
+	items := []model.SettingItem{
+		{Key: conf.Pan123TempDir, Value: req.TempDir, Type: conf.TypeString, Group: model.OFFLINE_DOWNLOAD, Flag: model.PRIVATE},
+	}
+	if err := op.SaveSettingItems(items); err != nil {
+		common.ErrorResp(c, err, 500)
+		return
+	}
+	_tool, err := tool.Tools.Get("123Pan")
 	if err != nil {
 		common.ErrorResp(c, err, 500)
 		return
@@ -403,6 +450,7 @@ func SetThunderBrowser(c *gin.Context) {
 		case *thunder_browser.ThunderBrowser, *thunder_browser.ThunderBrowserExpert:
 		default:
 			common.ErrorStrResp(c, "unsupported storage driver for offline download, only ThunderBrowser is supported", 400)
+			return
 		}
 	}
 	items := []model.SettingItem{
@@ -451,6 +499,15 @@ func AddOfflineDownload(c *gin.Context) {
 	reqPath, err := user.JoinPath(req.Path)
 	if err != nil {
 		common.ErrorResp(c, err, 403)
+		return
+	}
+	meta, err := op.GetNearestMeta(reqPath)
+	if err != nil && !errors.Is(errors.Cause(err), errs.MetaNotFound) {
+		common.ErrorResp(c, err, 500, true)
+		return
+	}
+	if !common.CanWrite(user, meta, reqPath) {
+		common.ErrorResp(c, errs.PermissionDenied, 403)
 		return
 	}
 	var tasks []task.TaskExtensionInfo
