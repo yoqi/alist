@@ -88,7 +88,7 @@ AssertStaticBinary() {
 }
 
 FetchWebRolling() {
-  pre_release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/$frontendRepo/releases/tags/rolling\"")
+  pre_release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/$frontendRepo/releases/tags/edge\"")
   pre_release_assets=$(echo "$pre_release_json" | jq -r '.assets[].browser_download_url')
   
   # There is no lite for rolling
@@ -280,7 +280,7 @@ BuildRelease() {
 BuildLoongGLIBC() {
   local target_abi="$2"
   local output_file="$1"
-  local oldWorldGoVersion="1.25.0"
+  local oldWorldGoVersion="1.26.4"
   local loong_tags
   loong_tags=$(GetBuildTagsForTarget "linux-loong64")
   
@@ -300,13 +300,13 @@ BuildLoongGLIBC() {
     
     # Download and setup patched Go compiler for old-world
     if ! curl -fsSL --retry 3 -H "Authorization: Bearer $GITHUB_TOKEN" \
-      "https://github.com/loong64/loong64-abi1.0-toolchains/releases/download/20250821/go${oldWorldGoVersion}.linux-amd64.tar.gz" \
+      "https://github.com/loong64-abi1-0/golang/releases/download/go${oldWorldGoVersion}/go${oldWorldGoVersion}.linux-amd64.tar.gz" \
       -o go-loong64-abi1.0.tar.gz; then
       echo "Error: Failed to download patched Go compiler for old-world ABI1.0"
       if [ -n "$GITHUB_TOKEN" ]; then
         echo "Error output from curl:"
         curl -fsSL --retry 3 -H "Authorization: Bearer $GITHUB_TOKEN" \
-          "https://github.com/loong64/loong64-abi1.0-toolchains/releases/download/20250821/go${oldWorldGoVersion}.linux-amd64.tar.gz" \
+          "https://github.com/loong64-abi1-0/golang/releases/download/go${oldWorldGoVersion}/go${oldWorldGoVersion}.linux-amd64.tar.gz" \
           -o go-loong64-abi1.0.tar.gz || true
       fi
       return 1
@@ -514,7 +514,6 @@ BuildReleaseAndroid() {
 }
 
 BuildReleaseFreeBSD() {
-  rm -rf .git/
   mkdir -p "build/freebsd"
   
   # Get latest FreeBSD 14.x release version from GitHub 
